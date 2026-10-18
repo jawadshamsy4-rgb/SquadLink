@@ -217,9 +217,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       setTestingMic(true)
       const audioConstraints: any = {
-        echoCancellation,
-        noiseSuppression,
-        autoGainControl,
+        echoCancellation: echoCancellation ?? true,
+        noiseSuppression: noiseSuppression ?? true,
+        autoGainControl: autoGainControl ?? true,
       }
       if (selectedInputId !== 'default') {
         audioConstraints.deviceId = { exact: selectedInputId }
@@ -261,12 +261,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       analyser.fftSize = 128
       const src = ctx.createMediaStreamSource(stream)
       src.connect(analyser)
-
-      // Connect loopback gain to ctx destination as backup monitor
-      const loopbackGain = ctx.createGain()
-      loopbackGain.gain.setValueAtTime(1.0, ctx.currentTime)
-      src.connect(loopbackGain)
-      loopbackGain.connect(ctx.destination)
 
       const data = new Uint8Array(analyser.frequencyBinCount)
       const interval = setInterval(() => {
