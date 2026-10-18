@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/providers/auth-provider'
 import { useTheme } from '@/components/providers/theme-provider'
@@ -23,6 +24,7 @@ interface AudioDevice {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { user, profile, signOut } = useAuth()
+  const [mounted, setMounted] = useState(false)
   const { theme, toggleTheme } = useTheme()
   const {
     echoCancellation,
@@ -62,6 +64,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const micTestIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const supabase = createClient()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (profile?.username) {
@@ -426,7 +432,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       .eq('user_id', user.id)
   }
 
-  return (
+  if (!mounted || !isOpen) return null
+
+  const modalContent = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 md:p-8 animate-in fade-in duration-200 select-none">
       {/* Persistent Audio Tag for Hardware Loopback without GC or throttling */}
       <audio ref={micTestAudioElementRef} style={{ display: 'none' }} playsInline autoPlay />
@@ -1096,4 +1104,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       </div>
     </div>
   )
+
+  return createPortal(modalContent, document.body)
 }

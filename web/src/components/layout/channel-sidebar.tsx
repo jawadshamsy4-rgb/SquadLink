@@ -304,7 +304,10 @@ export default function ChannelSidebar({
 
           {/* Settings icon below the owner badge */}
           <button
-            onClick={() => setIsServerSettingsOpen(true)}
+            onClick={() => {
+              setIsServerSettingsOpen(true)
+              onClose?.()
+            }}
             className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs"
             title="Server Settings"
           >

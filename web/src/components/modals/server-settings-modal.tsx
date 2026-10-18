@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/providers/auth-provider'
 import { generateInviteCode } from '@/lib/invite'
@@ -32,6 +33,8 @@ export default function ServerSettingsModal({
   onServerDeleted,
 }: ServerSettingsModalProps) {
   const { user } = useAuth()
+  const [mounted, setMounted] = useState(false)
+  const [mobileView, setMobileView] = useState<'menu' | 'detail'>('menu')
   const [activeTab, setActiveTab] = useState<SettingsTab>('overview')
   const [serverName, setServerName] = useState('')
   const [serverIcon, setServerIcon] = useState('')
@@ -51,6 +54,29 @@ export default function ServerSettingsModal({
   const [channelToDelete, setChannelToDelete] = useState<any | null>(null)
 
   const supabase = createClient()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Listen to Escape key to close modal or go back to mobile menu
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (channelToDelete) {
+          setChannelToDelete(null)
+        } else if (mobileView === 'detail' && window.innerWidth < 768) {
+          setMobileView('menu')
+        } else {
+          onClose()
+        }
+      }
+    }
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown)
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, channelToDelete, mobileView, onClose])
 
   // Fetch server details
   useEffect(() => {
@@ -95,7 +121,7 @@ export default function ServerSettingsModal({
     fetchServerData()
   }, [serverId, isOpen, supabase])
 
-  if (!isOpen || !serverId) return null
+  if (!mounted || !isOpen || !serverId) return null
 
   // Save General Overview
   const handleSaveOverview = async (e: React.FormEvent) => {
@@ -222,129 +248,169 @@ export default function ServerSettingsModal({
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="relative flex flex-col md:flex-row w-full max-w-5xl h-[88vh] rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#11151f] shadow-2xl overflow-hidden transition-colors duration-200">
-        {/* Left Navigation Sidebar */}
-        <div className="w-full md:w-64 bg-slate-100 dark:bg-[#0b0e15] p-5 border-b md:border-b-0 md:border-r border-slate-200 dark:border-white/5 flex flex-col justify-between shrink-0">
+  const tabs: {
+    id: SettingsTab
+    label: string
+    icon: string
+    count?: number
+    description: string
+    danger?: boolean
+  }[] = [
+    { id: 'overview', label: 'Overview', icon: '🌐', description: 'Server identity, name & invite code' },
+    { id: 'channels', label: 'Channels', icon: '💬', count: channels.length, description: 'Manage text, voice & radar channels' },
+    { id: 'members', label: 'Members', icon: '👥', count: members.length, description: 'View squad members & roles' },
+    { id: 'roles', label: 'Roles & Permissions', icon: '🛡️', description: 'Server ownership & squad hierarchy' },
+    { id: 'radar', label: 'Squad Radar & GPS', icon: '📍', description: 'CARTO basemaps & tactical waypoints' },
+    { id: 'voice', label: 'Voice Comms Quality', icon: '🔊', description: 'WebRTC bitrates & server regions' },
+    { id: 'danger', label: 'Danger Zone', icon: '⚠️', danger: true, description: 'Permanently delete this server' },
+  ]
+
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-0 md:p-6 lg:p-8 animate-in fade-in duration-200 select-none">
+      <div className="relative flex flex-col md:flex-row w-full max-w-6xl h-full md:h-[90vh] md:rounded-3xl border-0 md:border border-slate-200 dark:border-white/10 bg-white dark:bg-[#0f131c] shadow-2xl overflow-hidden transition-colors duration-200">
+        {/* Left Navigation Sidebar (Desktop) / Mobile Category Selector (Mobile) */}
+        <div
+          className={`${
+            mobileView === 'detail' ? 'hidden md:flex' : 'flex'
+          } w-full md:w-64 lg:w-72 bg-slate-100 dark:bg-[#090c12] p-5 md:p-6 border-b md:border-b-0 md:border-r border-slate-200 dark:border-white/5 flex-col justify-between shrink-0 h-full overflow-y-auto`}
+        >
           <div className="space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-purple-600 to-cyan-500 text-white font-bold text-lg shadow-md shadow-purple-500/20">
-                ⚙️
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex h-10 w-10 md:h-11 md:w-11 items-center justify-center rounded-2xl bg-gradient-to-tr from-purple-600 to-cyan-500 text-white font-bold text-lg md:text-xl shadow-md shadow-purple-500/25 shrink-0">
+                  ⚙️
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                    Server Settings
+                  </span>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white truncate">
+                    {serverName || 'My Squad'}
+                  </h3>
+                </div>
               </div>
-              <div className="min-w-0">
-                <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                  Server Settings
-                </span>
-                <h3 className="text-base font-extrabold text-slate-900 dark:text-white truncate">
-                  {serverName || 'My Squad'}
-                </h3>
-              </div>
+
+              {/* Close Button on Mobile Category List */}
+              <button
+                onClick={onClose}
+                className="flex md:hidden h-8 w-8 items-center justify-center rounded-xl bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white cursor-pointer text-sm font-bold"
+                title="Close"
+              >
+                ✕
+              </button>
             </div>
 
             {/* Navigation Tabs */}
-            <nav className="space-y-1">
-              <button
-                onClick={() => setActiveTab('overview')}
-                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'overview'
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>🌐</span>
-                <span>Overview</span>
-              </button>
+            <nav className="space-y-1.5">
+              <span className="hidden md:block text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-gray-500 px-3 pb-1">
+                Categories
+              </span>
+              {tabs.map((tab) => {
+                const isSelected = activeTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id)
+                      setMobileView('detail')
+                    }}
+                    className={`flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-xs font-bold transition-all cursor-pointer text-left ${
+                      tab.danger
+                        ? isSelected
+                          ? 'bg-red-600 text-white shadow-md shadow-red-500/25'
+                          : 'text-red-500 hover:bg-red-500/10'
+                        : isSelected
+                        ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
+                        : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-base shrink-0">{tab.icon}</span>
+                      <div className="min-w-0">
+                        <span className="block truncate">{tab.label}</span>
+                        <span className="block md:hidden text-[10px] font-normal opacity-70 truncate">
+                          {tab.description}
+                        </span>
+                      </div>
+                    </div>
 
-              <button
-                onClick={() => setActiveTab('channels')}
-                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'channels'
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>💬</span>
-                <span>Channels ({channels.length})</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('members')}
-                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'members'
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>👥</span>
-                <span>Members ({members.length})</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('roles')}
-                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'roles'
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>🛡️</span>
-                <span>Roles & Permissions</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('radar')}
-                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'radar'
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>📍</span>
-                <span>Squad Radar & GPS</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('voice')}
-                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'voice'
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>🔊</span>
-                <span>Voice Comms Quality</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('danger')}
-                className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
-                  activeTab === 'danger'
-                    ? 'bg-red-600 text-white shadow-md shadow-red-500/25'
-                    : 'text-red-500 dark:text-red-400 hover:bg-red-500/10'
-                }`}
-              >
-                <span>⚠️</span>
-                <span>Danger Zone</span>
-              </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {tab.count !== undefined && (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            isSelected
+                              ? 'bg-white/20 text-white'
+                              : 'bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-gray-400'
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      )}
+                      <span className="md:hidden text-xs opacity-60">›</span>
+                    </div>
+                  </button>
+                )
+              })}
             </nav>
           </div>
 
-          <button
-            onClick={onClose}
-            className="w-full rounded-2xl border border-slate-300 dark:border-white/10 bg-slate-200/80 dark:bg-white/5 py-2 text-xs font-bold text-slate-700 dark:text-gray-300 hover:bg-slate-300 dark:hover:bg-white/10 transition-colors cursor-pointer"
-          >
-            Esc or Close
-          </button>
+          {/* Desktop Esc / Close Button */}
+          <div className="pt-6 hidden md:block">
+            <button
+              onClick={onClose}
+              className="w-full rounded-2xl border border-slate-300 dark:border-white/10 bg-slate-200/80 dark:bg-white/5 py-2.5 text-xs font-bold text-slate-700 dark:text-gray-300 hover:bg-slate-300 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              Esc or Close
+            </button>
+          </div>
         </div>
 
-        {/* Right Tab Content Canvas */}
-        <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-[#11151f] p-6 md:p-8 overflow-y-auto">
-          {saveMessage && (
-            <div className="mb-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 p-3 text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-in fade-in">
-              {saveMessage}
-            </div>
-          )}
+        {/* Right Tab Content Canvas (Desktop) / Dedicated Detail Page (Mobile) */}
+        <div
+          className={`${
+            mobileView === 'menu' ? 'hidden md:flex' : 'flex'
+          } flex-1 flex-col min-h-0 bg-white dark:bg-[#0f131c] overflow-y-auto relative h-full`}
+        >
+          {/* Mobile Back Header */}
+          <div className="flex md:hidden items-center justify-between p-4 border-b border-slate-200 dark:border-white/5 bg-slate-100/90 dark:bg-[#090c12]/90 backdrop-blur-md sticky top-0 z-20">
+            <button
+              onClick={() => setMobileView('menu')}
+              className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+            >
+              <span className="text-sm font-black">‹</span>
+              <span>Back to Settings</span>
+            </button>
+            <span className="text-xs font-extrabold text-slate-900 dark:text-white capitalize truncate px-2">
+              {tabs.find((t) => t.id === activeTab)?.label}
+            </span>
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white cursor-pointer text-xs font-bold"
+              title="Close"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Desktop Discord-style Close Button */}
+          <div className="hidden md:flex absolute top-6 right-8 flex-col items-center z-20">
+            <button
+              onClick={onClose}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 dark:border-white/20 text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-all cursor-pointer text-sm font-bold shadow-sm"
+              title="Close (Esc)"
+            >
+              ✕
+            </button>
+            <span className="text-[10px] font-black uppercase text-slate-400 dark:text-gray-500 mt-1">ESC</span>
+          </div>
+
+          {/* Content Body Container */}
+          <div className="p-6 md:p-10 lg:p-12 max-w-4xl">
+            {saveMessage && (
+              <div className="mb-6 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 p-3.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 animate-in fade-in">
+                {saveMessage}
+              </div>
+            )}
 
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
@@ -786,6 +852,7 @@ export default function ServerSettingsModal({
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
 
@@ -821,4 +888,6 @@ export default function ServerSettingsModal({
       )}
     </div>
   )
+
+  return createPortal(modalContent, document.body)
 }

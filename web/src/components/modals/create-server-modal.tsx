@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/providers/auth-provider'
 import { generateInviteCode } from '@/lib/invite'
@@ -16,6 +17,7 @@ export default function CreateServerModal({
   onClose,
   onCreated,
 }: CreateServerModalProps) {
+  const [mounted, setMounted] = useState(false)
   const [mode, setMode] = useState<'create' | 'join'>('create')
   const [serverName, setServerName] = useState('')
   const [inviteCode, setInviteCode] = useState('')
@@ -25,7 +27,11 @@ export default function CreateServerModal({
   const { user } = useAuth()
   const supabase = createClient()
 
-  if (!isOpen) return null
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted || !isOpen) return null
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -131,7 +137,7 @@ export default function CreateServerModal({
     }
   }
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
       <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/95 p-6 shadow-2xl transition-colors duration-200">
         <div className="flex items-center justify-between pb-4">
@@ -246,4 +252,6 @@ export default function CreateServerModal({
       </div>
     </div>
   )
+
+  return createPortal(modalContent, document.body)
 }
