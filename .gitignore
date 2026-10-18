@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Next.js build & cache
+.next/
+out/
+build/
+dist/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Env & secrets
+.env*
+!.env.example
+*.pem
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temp files & MinGit
+mingit.zip
+create_repo.mjs
+push_to_github.bat
+
+# Temporary migration & setup scripts
+check_channels.js
+check_fk.js
+check_servers.js
+clean_channels.js
+create_reactions_table.js
+fix_server_trigger.js
+run_migration.js
+run_retention_migration.js
+seed_preview_data.js
+update_generic_branding.js

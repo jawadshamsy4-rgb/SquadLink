@@ -1,0 +1,222 @@
+'use client'
+
+import { useRef, useEffect } from 'react'
+import { useAuth } from '@/components/providers/auth-provider'
+import { useVoice } from '@/components/providers/voice-provider'
+
+interface VoiceChannelProps {
+  channelId: string
+  channelName: string
+}
+
+export default function VoiceChannel({ channelId, channelName }: VoiceChannelProps) {
+  const { user, profile } = useAuth()
+  const {
+    connectedChannel,
+    isConnected,
+    isConnecting,
+    isMuted,
+    isDeafened,
+    isScreenSharing,
+    localSpeaking,
+    participants,
+    connectVoice,
+    disconnectVoice,
+    toggleMute,
+    toggleDeafen,
+    toggleScreenShare,
+    registerVideoContainer,
+  } = useVoice()
+
+  const videoContainerRef = useRef<HTMLVideoElement | null>(null)
+
+  const isConnectedToThisChannel = isConnected && connectedChannel?.id === channelId
+
+  useEffect(() => {
+    if (videoContainerRef.current) {
+      registerVideoContainer(videoContainerRef.current)
+    }
+  }, [isScreenSharing])
+
+  const handleConnect = () => {
+    connectVoice(channelId, channelName)
+  }
+
+  return (
+    <div className="flex h-full w-full flex-col bg-slate-50 dark:bg-[#090c13] p-6 select-none overflow-y-auto transition-colors duration-200">
+      {/* Top Header */}
+      <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-lg">
+            🔊
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-slate-900 dark:text-white">{channelName}</h2>
+            <p className="text-xs text-slate-500 dark:text-gray-400">
+              {isConnectedToThisChannel
+                ? `Connected: ${participants.length} Squad Member(s) in Comms`
+                : 'Click below to connect to voice comms'}
+            </p>
+          </div>
+        </div>
+
+        {isConnectedToThisChannel && (
+          <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
+            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Voice Connected</span>
+          </div>
+        )}
+      </div>
+
+      {/* Screen Share Video Stream Container */}
+      {isScreenSharing && (
+        <div className="relative mt-4 aspect-video w-full max-h-[500px] overflow-hidden rounded-3xl border border-purple-500/40 bg-black shadow-2xl">
+          <video
+            ref={videoContainerRef}
+            autoPlay
+            playsInline
+            muted
+            className="h-full w-full object-contain"
+          />
+          <div className="absolute top-4 left-4 flex items-center gap-2 rounded-xl bg-purple-600/90 px-3 py-1.5 text-xs font-black text-white backdrop-blur-md shadow-lg">
+            <span className="h-2 w-2 rounded-full bg-red-400 animate-ping" />
+            <span>LIVE SCREEN STREAM (60 FPS)</span>
+          </div>
+          <button
+            onClick={() => toggleScreenShare(videoContainerRef.current)}
+            className="absolute top-4 right-4 rounded-xl bg-black/60 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-600 transition-colors cursor-pointer"
+          >
+            Stop Stream ✕
+          </button>
+        </div>
+      )}
+
+      {/* Center Participants Grid */}
+      <div className="my-auto flex flex-1 flex-wrap items-center justify-center gap-6 p-6">
+        {isConnectedToThisChannel ? (
+          participants.map((p, idx) => {
+            const isLocal = idx === 0
+            const isSpeakingNow = isLocal ? localSpeaking : p.isSpeaking
+
+            return (
+              <div
+                key={p.identity}
+                className={`relative flex flex-col items-center justify-center rounded-3xl border transition-all duration-200 shadow-sm ${
+                  isSpeakingNow
+                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 shadow-xl shadow-emerald-500/25 scale-105'
+                    : 'border-slate-200 dark:border-white/10 bg-white dark:bg-[#121620] hover:border-slate-300 dark:hover:border-white/20'
+                } w-44 h-48`}
+              >
+                {/* Avatar with dynamic neon green ring when speaking */}
+                <div
+                  className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-tr from-purple-600 to-cyan-500 text-2xl font-black text-white shadow-lg transition-all ${
+                    isSpeakingNow ? 'ring-4 ring-emerald-400 animate-pulse' : ''
+                  }`}
+                >
+                  {p.avatarUrl ? (
+                    <img src={p.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
+                  ) : (
+                    p.name.slice(0, 2).toUpperCase()
+                  )}
+                  {(isLocal ? isMuted : p.isMuted) && (
+                    <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs text-white shadow-md">
+                      ✕
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 flex items-center justify-center max-w-[150px] truncate">
+                  <span className="font-bold text-slate-900 dark:text-white truncate text-sm">
+                    {p.name} {isLocal && '(You)'}
+                  </span>
+                </div>
+
+                <span className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-gray-400">
+                  {(isLocal ? isMuted : p.isMuted)
+                    ? '🔇 Muted'
+                    : isSpeakingNow
+                    ? '🎙️ Speaking'
+                    : '🎧 Listening'}
+                </span>
+              </div>
+            )
+          })
+        ) : (
+          <div className="text-center py-10">
+            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-tr from-purple-500/20 to-cyan-500/20 text-4xl shadow-inner">
+              🎧
+            </div>
+            <h3 className="mt-4 text-xl font-black text-slate-900 dark:text-white">Join Voice Channel</h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-gray-400 max-w-sm mx-auto">
+              Connect your microphone to chat with your squad and share gameplay in real time.
+            </p>
+            <button
+              onClick={handleConnect}
+              disabled={isConnecting}
+              className="mt-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-8 py-3.5 font-bold text-white shadow-lg shadow-emerald-500/25 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer text-base"
+            >
+              {isConnecting ? 'Connecting Comms...' : '🔊 Connect to Voice'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Control Dock (Mute, Deafen, Screen Share, Disconnect) */}
+      {isConnectedToThisChannel && (
+        <div className="mt-auto flex flex-wrap items-center justify-center gap-2 sm:gap-4 rounded-3xl border border-slate-200 dark:border-white/10 bg-white/90 dark:bg-[#121622]/90 p-2.5 sm:p-3.5 backdrop-blur-xl shadow-2xl transition-colors duration-200">
+          {/* Mute Mic Button */}
+          <button
+            onClick={toggleMute}
+            className={`flex items-center gap-1.5 sm:gap-2 rounded-2xl px-3.5 sm:px-5 py-2.5 sm:py-3 font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+              isMuted
+                ? 'bg-red-50 text-red-600 border border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/40 hover:bg-red-100 dark:hover:bg-red-500/30'
+                : 'bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20'
+            }`}
+            title="Toggle Microphone"
+          >
+            <span>{isMuted ? '🔇' : '🎙️'}</span>
+            <span>{isMuted ? 'Unmute' : 'Mute'}</span>
+          </button>
+
+          {/* Deafen Sound Button */}
+          <button
+            onClick={toggleDeafen}
+            className={`flex items-center gap-1.5 sm:gap-2 rounded-2xl px-3.5 sm:px-5 py-2.5 sm:py-3 font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+              isDeafened
+                ? 'bg-red-50 text-red-600 border border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/40 hover:bg-red-100 dark:hover:bg-red-500/30'
+                : 'bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20'
+            }`}
+            title="Toggle Output Audio"
+          >
+            <span>{isDeafened ? '🔕' : '🎧'}</span>
+            <span>{isDeafened ? 'Undeafen' : 'Deafen'}</span>
+          </button>
+
+          {/* Screen Share / Stream Button */}
+          <button
+            onClick={() => toggleScreenShare(videoContainerRef.current)}
+            className={`flex items-center gap-1.5 sm:gap-2 rounded-2xl px-4 sm:px-6 py-2.5 sm:py-3 font-bold text-xs sm:text-sm text-white shadow-lg transition-all cursor-pointer ${
+              isScreenSharing
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 ring-2 ring-purple-400 hover:opacity-90'
+                : 'bg-gradient-to-r from-purple-600 to-cyan-600 hover:opacity-90 active:scale-95'
+            }`}
+            title="Share Screen or Application"
+          >
+            <span>🖥️</span>
+            <span>{isScreenSharing ? 'Stop Screen' : 'Share Screen'}</span>
+          </button>
+
+          {/* Disconnect Button */}
+          <button
+            onClick={disconnectVoice}
+            className="flex items-center gap-1.5 sm:gap-2 rounded-2xl bg-red-600 px-4 sm:px-6 py-2.5 sm:py-3 font-black text-xs sm:text-sm text-white shadow-lg shadow-red-600/30 hover:bg-red-700 active:scale-95 transition-all cursor-pointer"
+            title="Leave Voice Channel"
+          >
+            <span>📞</span>
+            <span>Disconnect</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}

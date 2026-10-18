@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "SquadLink",
+    "slug": "squadlink",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a0a"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.squadlink.mobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SquadLink uses your location to show your squad where you are on the map.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "SquadLink uses background location to keep your squad map pin updated.",
+        "UIBackgroundModes": ["location", "audio"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a0a0a"
+      },
+      "package": "com.squadlink.mobile",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "RECORD_AUDIO",
+        "FOREGROUND_SERVICE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "SquadLink uses your location to show your squad where you are on the map.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "scheme": "squadlink"
+  }
+}
