@@ -72,6 +72,23 @@ export default function AppPage() {
     }
   }
 
+  const handleOpenCreateServer = () => {
+    setCreateServerMode('create')
+    setIsCreateServerOpen(true)
+    setIsMobileNavOpen(false)
+  }
+
+  const handleOpenJoinServer = () => {
+    setCreateServerMode('join')
+    setIsCreateServerOpen(true)
+    setIsMobileNavOpen(false)
+  }
+
+  const handleOpenSettings = () => {
+    setIsSettingsOpen(true)
+    setIsMobileNavOpen(false)
+  }
+
   if (loading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-slate-100 dark:bg-slate-950 transition-colors duration-200">
@@ -114,11 +131,7 @@ export default function AppPage() {
             setSelectedServerId(null)
             setSelectedChannel(null)
           }}
-          onCreateServerClick={() => {
-            setCreateServerMode('create')
-            setIsCreateServerOpen(true)
-            setIsMobileNavOpen(false)
-          }}
+          onCreateServerClick={handleOpenCreateServer}
           onServersLoaded={handleServersLoaded}
         />
 
@@ -130,10 +143,9 @@ export default function AppPage() {
             setSelectedChannel(channel)
             setIsMobileNavOpen(false)
           }}
-          onSettingsClick={() => {
-            setIsSettingsOpen(true)
-            setIsMobileNavOpen(false)
-          }}
+          onSettingsClick={handleOpenSettings}
+          onCreateServerClick={handleOpenCreateServer}
+          onJoinServerClick={handleOpenJoinServer}
           onClose={() => setIsMobileNavOpen(false)}
         />
       </div>
@@ -143,6 +155,9 @@ export default function AppPage() {
         channel={selectedChannel}
         serverId={selectedServerId}
         onToggleMobileNav={() => setIsMobileNavOpen((prev) => !prev)}
+        onCreateServerClick={handleOpenCreateServer}
+        onJoinServerClick={handleOpenJoinServer}
+        onSettingsClick={handleOpenSettings}
       />
 
       {/* Modals */}

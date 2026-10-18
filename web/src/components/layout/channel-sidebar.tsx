@@ -30,6 +30,8 @@ interface ChannelSidebarProps {
   selectedChannelId: string | null
   onSelectChannel: (channel: Channel) => void
   onSettingsClick: () => void
+  onCreateServerClick?: () => void
+  onJoinServerClick?: () => void
   onClose?: () => void
 }
 
@@ -38,6 +40,8 @@ export default function ChannelSidebar({
   selectedChannelId,
   onSelectChannel,
   onSettingsClick,
+  onCreateServerClick,
+  onJoinServerClick,
   onClose,
 }: ChannelSidebarProps) {
   const [server, setServer] = useState<ServerInfo | null>(null)
@@ -50,6 +54,16 @@ export default function ChannelSidebar({
   const [statusInput, setStatusInput] = useState('')
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false)
   const { user, profile } = useAuth()
+  const displayName =
+    profile?.username ||
+    (user?.user_metadata?.username as string) ||
+    (user?.user_metadata?.full_name as string) ||
+    user?.email?.split('@')[0] ||
+    'SquadLeader'
+  const displayAvatar =
+    profile?.avatar_url ||
+    (user?.user_metadata?.avatar_url as string) ||
+    `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(displayName)}`
   const {
     connectedChannel,
     isConnected,
@@ -253,99 +267,100 @@ export default function ChannelSidebar({
     )
   }
 
-  if (!serverId) {
-    return (
-      <div className="relative flex h-full w-60 flex-col bg-slate-100 dark:bg-[#121620] border-r border-slate-200 dark:border-white/5 transition-colors duration-200 p-4">
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 flex h-7 w-7 items-center justify-center rounded-xl bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-gray-300 md:hidden cursor-pointer text-xs hover:text-slate-900 dark:hover:text-white"
-            title="Close menu"
-          >
-            ✕
-          </button>
-        )}
-        <div className="flex flex-col items-center justify-center h-full text-center gap-3">
-          <div className="h-14 w-14 rounded-2xl overflow-hidden shadow-lg shadow-purple-500/20 border border-purple-500/20">
-            <img src="/logo.png" alt="SquadLink" className="h-full w-full object-cover" />
-          </div>
-          <span className="text-xs font-bold text-slate-700 dark:text-gray-300">SquadLink</span>
-          <p className="text-[11px] text-slate-400 dark:text-gray-500 leading-snug">
-            Select a server from the left sidebar to join your squad!
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="flex h-full w-60 flex-col bg-slate-100 dark:bg-[#121620] border-r border-slate-200 dark:border-white/5 select-none transition-colors duration-200">
-      {/* Server Header with Invite Code */}
-      <div className="flex h-16 flex-col justify-center border-b border-slate-200 dark:border-white/5 px-4 shadow-sm bg-slate-100 dark:bg-[#121620] transition-colors duration-200">
-        <div className="flex items-center justify-between">
-          <h2 className="truncate text-base font-extrabold text-slate-900 dark:text-white">
-            {server?.name ?? 'Loading...'}
-          </h2>
-          <div className="flex items-center gap-1.5">
-            <span
-              className={`rounded-full px-1.5 py-0.5 text-[10px] font-black ${
-                server?.owner_id === user?.id
-                  ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400'
-                  : 'bg-purple-500/20 text-purple-600 dark:text-purple-400'
-              }`}
-            >
-              {server?.owner_id === user?.id ? '👑 OWNER' : '🎮 MEMBER'}
-            </span>
-            {onClose && (
-              <button
-                onClick={onClose}
-                className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 md:hidden cursor-pointer text-xs"
-                title="Close Navigation"
+      {/* Server Header or Home Hub Header */}
+      {serverId ? (
+        <div className="flex h-16 flex-col justify-center border-b border-slate-200 dark:border-white/5 px-4 shadow-sm bg-slate-100 dark:bg-[#121620] transition-colors duration-200 shrink-0">
+          <div className="flex items-center justify-between">
+            <h2 className="truncate text-base font-extrabold text-slate-900 dark:text-white">
+              {server?.name ?? 'Loading...'}
+            </h2>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-black ${
+                  server?.owner_id === user?.id
+                    ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400'
+                    : 'bg-purple-500/20 text-purple-600 dark:text-purple-400'
+                }`}
               >
-                ✕
+                {server?.owner_id === user?.id ? '👑 OWNER' : '🎮 MEMBER'}
+              </span>
+              {onClose && (
+                <button
+                  onClick={onClose}
+                  className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 md:hidden cursor-pointer text-xs"
+                  title="Close Navigation"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center justify-between mt-0.5">
+            {server?.invite_code ? (
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-gray-400">
+                <span>Invite:</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(server.invite_code || '')
+                    alert(`Invite code copied: ${server.invite_code}`)
+                  }}
+                  className="font-mono text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 font-bold bg-slate-200 dark:bg-white/5 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+                  title="Click to copy invite code"
+                >
+                  {server.invite_code} 📋
+                </button>
+              </div>
+            ) : (
+              <div />
+            )}
+
+            {/* Settings icon below the owner badge (visible to owner) */}
+            {server?.owner_id === user?.id ? (
+              <button
+                onClick={() => {
+                  setIsServerSettingsOpen(true)
+                  onClose?.()
+                }}
+                className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs"
+                title="Server Settings"
+              >
+                ⚙️
               </button>
+            ) : (
+              <div />
             )}
           </div>
         </div>
-        <div className="flex items-center justify-between mt-0.5">
-          {server?.invite_code ? (
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-gray-400">
-              <span>Invite:</span>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(server.invite_code || '')
-                  alert(`Invite code copied: ${server.invite_code}`)
-                }}
-                className="font-mono text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 font-bold bg-slate-200 dark:bg-white/5 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
-                title="Click to copy invite code"
-              >
-                {server.invite_code} 📋
-              </button>
+      ) : (
+        <div className="flex h-16 items-center justify-between border-b border-slate-200 dark:border-white/5 px-4 shadow-sm bg-slate-100 dark:bg-[#121620] transition-colors duration-200 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-xl overflow-hidden shadow-sm border border-purple-500/20">
+              <img src="/logo.png" alt="SquadLink" className="h-full w-full object-cover" />
             </div>
-          ) : (
-            <div />
-          )}
-
-          {/* Settings icon below the owner badge (visible to owner) */}
-          {server?.owner_id === user?.id ? (
+            <div>
+              <span className="font-extrabold text-sm text-slate-900 dark:text-white block leading-tight">SquadLink</span>
+              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">Home Hub</span>
+            </div>
+          </div>
+          {onClose && (
             <button
-              onClick={() => {
-                setIsServerSettingsOpen(true)
-                onClose?.()
-              }}
-              className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs"
-              title="Server Settings"
+              onClick={onClose}
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 md:hidden cursor-pointer text-xs"
+              title="Close Navigation"
             >
-              ⚙️
+              ✕
             </button>
-          ) : (
-            <div />
           )}
         </div>
-      </div>
+      )}
 
-      {/* Channel Creation Inline Form */}
-      {isCreatingChannel && (
+      {/* Middle Body Area: Channels (if serverId) or Home Quick Actions (if !serverId) */}
+      {serverId ? (
+        <>
+          {/* Channel Creation Inline Form */}
+          {isCreatingChannel && (
         <form onSubmit={handleCreateChannel} className="p-3 border-b border-slate-200 dark:border-white/5 bg-slate-200/50 dark:bg-slate-900/60">
           <div className="text-xs font-bold text-slate-700 dark:text-gray-300 mb-2">Create New Channel</div>
           <input
@@ -652,6 +667,77 @@ export default function ChannelSidebar({
           </div>
         </div>
       </div>
+    </>
+  ) : (
+    <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
+      <div className="space-y-1">
+        <p className="px-2 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-gray-500 mb-2">
+          Squad Quick Menu
+        </p>
+
+        <button
+          onClick={onCreateServerClick}
+          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-700 dark:text-gray-300 hover:bg-purple-500/10 hover:text-purple-600 dark:hover:text-purple-400 transition-colors cursor-pointer group text-left"
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-purple-500 to-indigo-500 text-white shadow-sm group-hover:scale-105 transition-transform shrink-0">
+            <span className="text-sm font-bold">+</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold leading-tight truncate">Create a Squad</p>
+            <p className="text-[10px] text-slate-400 dark:text-gray-500 font-normal">Start your server</p>
+          </div>
+        </button>
+
+        <button
+          onClick={onJoinServerClick}
+          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-700 dark:text-gray-300 hover:bg-cyan-500/10 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors cursor-pointer group text-left"
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-cyan-500 to-emerald-500 text-white shadow-sm group-hover:scale-105 transition-transform shrink-0">
+            <span className="text-xs">🔗</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold leading-tight truncate">Join a Squad</p>
+            <p className="text-[10px] text-slate-400 dark:text-gray-500 font-normal">Use invite code</p>
+          </div>
+        </button>
+
+        <button
+          onClick={onSettingsClick}
+          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-700 dark:text-gray-300 hover:bg-pink-500/10 hover:text-pink-600 dark:hover:text-pink-400 transition-colors cursor-pointer group text-left"
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-pink-500 to-rose-500 text-white shadow-sm group-hover:scale-105 transition-transform shrink-0">
+            <span className="text-xs">⚙️</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold leading-tight truncate">Audio & Voice</p>
+            <p className="text-[10px] text-slate-400 dark:text-gray-500 font-normal">Mic test & effects</p>
+          </div>
+        </button>
+
+        <a
+          href="/profile"
+          className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-xs font-bold text-slate-700 dark:text-gray-300 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer group text-left"
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-amber-500 to-orange-500 text-white shadow-sm group-hover:scale-105 transition-transform shrink-0">
+            <span className="text-xs">👤</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold leading-tight truncate">User Profile</p>
+            <p className="text-[10px] text-slate-400 dark:text-gray-500 font-normal">Avatar & status</p>
+          </div>
+        </a>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 dark:border-white/5 bg-slate-200/40 dark:bg-white/[0.02] p-3 text-center">
+        <p className="text-xs font-bold text-slate-700 dark:text-gray-300 mb-1">
+          Ready to Squad Up?
+        </p>
+        <p className="text-[11px] text-slate-400 dark:text-gray-500 leading-relaxed">
+          Create your own server or enter an invite code to coordinate with friends, join voice, and tactical maps!
+        </p>
+      </div>
+    </div>
+  )}
 
       {/* Discord-Style Voice Connection Box (shown when connected or connecting to voice) */}
       {(isConnected || isConnecting) && (
@@ -715,15 +801,15 @@ export default function ChannelSidebar({
           title="View & Edit Profile"
         >
           <div className="relative shrink-0">
-            {profile?.avatar_url ? (
+            {displayAvatar ? (
               <img
-                src={profile.avatar_url}
+                src={displayAvatar}
                 alt="Avatar"
                 className="h-8 w-8 rounded-full object-cover border border-purple-500/40 shadow-sm group-hover:scale-105 transition-transform"
               />
             ) : (
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-purple-500 to-cyan-500 text-xs font-black text-white shadow-sm group-hover:scale-105 transition-transform">
-                {profile?.username?.charAt(0)?.toUpperCase() ?? 'S'}
+                {displayName.charAt(0).toUpperCase()}
               </div>
             )}
             <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-950 bg-emerald-500" />
@@ -731,7 +817,7 @@ export default function ChannelSidebar({
 
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-bold text-slate-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-300 transition-colors">
-              {profile?.username ?? 'SquadLeader'}
+              {displayName}
             </p>
             <p className="text-[10px] text-slate-500 dark:text-gray-500 truncate">
               {isDeafened ? 'Deafened' : isMuted ? 'Muted' : 'Online'}
