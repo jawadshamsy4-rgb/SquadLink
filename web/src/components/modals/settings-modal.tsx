@@ -56,6 +56,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const micTestStreamRef = useRef<MediaStream | null>(null)
   const micTestAudioRef = useRef<HTMLAudioElement | null>(null)
   const micTestCtxRef = useRef<AudioContext | null>(null)
+  const micTestAnalyserRef = useRef<AnalyserNode | null>(null)
+  const micTestSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const micTestIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const micTestTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -152,6 +154,70 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   if (!isOpen) return null
 
+  const applyLiveAudioConstraints = async (
+    newEcho: boolean,
+    newNoise: boolean,
+    newAgc: boolean,
+    newDeviceId?: string
+  ) => {
+    if (!micTestStreamRef.current) return
+
+    const devId = newDeviceId ?? selectedInputId
+    const audioConstraints: any = {
+      echoCancellation: newEcho,
+      noiseSuppression: newNoise,
+      autoGainControl: newAgc,
+    }
+    if (devId !== 'default') {
+      audioConstraints.deviceId = { exact: devId }
+    }
+
+    // 1. Try track.applyConstraints for instant in-place DSP reconfiguration
+    const currentTrack = micTestStreamRef.current.getAudioTracks()[0]
+    if (currentTrack) {
+      try {
+        await currentTrack.applyConstraints(audioConstraints)
+      } catch (err) {
+        console.debug('applyConstraints fallback to stream swap:', err)
+      }
+    }
+
+    // 2. Seamlessly hot-swap the stream so the audio hardware pipeline updates immediately
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+      })
+
+      const oldStream = micTestStreamRef.current
+      micTestStreamRef.current = newStream
+
+      // Update Audio element playback immediately
+      if (micTestAudioRef.current) {
+        micTestAudioRef.current.srcObject = newStream
+        micTestAudioRef.current.play().catch(() => {})
+      }
+
+      // Reconnect Web Audio analyser to new stream
+      if (micTestCtxRef.current && micTestAnalyserRef.current) {
+        if (micTestSourceRef.current) {
+          try {
+            micTestSourceRef.current.disconnect()
+          } catch (e) {}
+        }
+        const newSrc = micTestCtxRef.current.createMediaStreamSource(newStream)
+        newSrc.connect(micTestAnalyserRef.current)
+        micTestSourceRef.current = newSrc
+      }
+
+      // Cleanly stop old tracks
+      if (oldStream) {
+        oldStream.getTracks().forEach((track) => track.stop())
+      }
+    } catch (err) {
+      console.warn('Could not live update mic test stream:', err)
+    }
+  }
+
   const handleInputChange = (deviceId: string) => {
     setSelectedInputId(deviceId)
     localStorage.setItem('squadlink-audio-input', deviceId)
@@ -160,6 +226,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         detail: { inputId: deviceId, outputId: selectedOutputId },
       })
     )
+    if (testingMic) {
+      applyLiveAudioConstraints(echoCancellation, noiseSuppression, autoGainControl, deviceId)
+    }
   }
 
   const handleOutputChange = (deviceId: string) => {
@@ -170,6 +239,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         detail: { inputId: selectedInputId, outputId: deviceId },
       })
     )
+    if (micTestAudioRef.current && deviceId !== 'default' && typeof (micTestAudioRef.current as any).setSinkId === 'function') {
+      try {
+        (micTestAudioRef.current as any).setSinkId(deviceId)
+      } catch (e) {
+        console.warn('Could not setSinkId live:', e)
+      }
+    }
   }
 
   const stopMicrophoneTest = () => {
@@ -181,6 +257,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       clearTimeout(micTestTimeoutRef.current)
       micTestTimeoutRef.current = null
     }
+    if (micTestSourceRef.current) {
+      try {
+        micTestSourceRef.current.disconnect()
+      } catch (e) {}
+      micTestSourceRef.current = null
+    }
+    micTestAnalyserRef.current = null
     if (micTestStreamRef.current) {
       micTestStreamRef.current.getTracks().forEach((track) => track.stop())
       micTestStreamRef.current = null
@@ -259,8 +342,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 128
+      micTestAnalyserRef.current = analyser
+
       const src = ctx.createMediaStreamSource(stream)
       src.connect(analyser)
+      micTestSourceRef.current = src
 
       const data = new Uint8Array(analyser.frequencyBinCount)
       const interval = setInterval(() => {
@@ -594,7 +680,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   {/* Echo Cancellation */}
                   <button
                     type="button"
-                    onClick={() => setEchoCancellation(!echoCancellation)}
+                    onClick={() => {
+                      const nextVal = !echoCancellation
+                      setEchoCancellation(nextVal)
+                      if (testingMic) {
+                        applyLiveAudioConstraints(nextVal, noiseSuppression, autoGainControl)
+                      }
+                    }}
                     className={`rounded-2xl p-4 border text-left transition-all cursor-pointer relative overflow-hidden group ${
                       echoCancellation
                         ? 'bg-purple-500/10 border-purple-500/30 dark:bg-purple-500/15 dark:border-purple-500/40 shadow-xs'
@@ -623,7 +715,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   {/* Noise Suppression */}
                   <button
                     type="button"
-                    onClick={() => setNoiseSuppression(!noiseSuppression)}
+                    onClick={() => {
+                      const nextVal = !noiseSuppression
+                      setNoiseSuppression(nextVal)
+                      if (testingMic) {
+                        applyLiveAudioConstraints(echoCancellation, nextVal, autoGainControl)
+                      }
+                    }}
                     className={`rounded-2xl p-4 border text-left transition-all cursor-pointer relative overflow-hidden group ${
                       noiseSuppression
                         ? 'bg-cyan-500/10 border-cyan-500/30 dark:bg-cyan-500/15 dark:border-cyan-500/40 shadow-xs'
@@ -652,7 +750,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   {/* Auto Gain Control */}
                   <button
                     type="button"
-                    onClick={() => setAutoGainControl(!autoGainControl)}
+                    onClick={() => {
+                      const nextVal = !autoGainControl
+                      setAutoGainControl(nextVal)
+                      if (testingMic) {
+                        applyLiveAudioConstraints(echoCancellation, noiseSuppression, nextVal)
+                      }
+                    }}
                     className={`rounded-2xl p-4 border text-left transition-all cursor-pointer relative overflow-hidden group ${
                       autoGainControl
                         ? 'bg-emerald-500/10 border-emerald-500/30 dark:bg-emerald-500/15 dark:border-emerald-500/40 shadow-xs'
