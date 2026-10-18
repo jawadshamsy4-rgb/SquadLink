@@ -42,3 +42,6 @@ run_migration.js
 run_retention_migration.js
 seed_preview_data.js
 update_generic_branding.js
+
+.vercel
+.env*
