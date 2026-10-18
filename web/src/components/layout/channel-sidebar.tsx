@@ -86,33 +86,51 @@ export default function ChannelSidebar({
     if (!serverId) return
 
     const fetchData = async () => {
+      if (!user) {
+        setServer(null)
+        setChannels([])
+        return
+      }
+
       // 1. Fetch server info
       const { data: serverData } = await supabase
         .from('servers')
         .select('id, name, icon_url, invite_code, owner_id')
         .eq('id', serverId)
-        .single()
+        .maybeSingle()
 
-      if (serverData) {
-        setServer(serverData)
-      } else {
-        setServer({
-          id: serverId,
-          name: 'Main Squad',
-          icon_url: null,
-          invite_code: 'SQUAD1',
-        })
+      if (!serverData) {
+        setServer(null)
+        setChannels([])
+        return
       }
 
-      // 2. Fetch channels from Supabase
-      const { data: channelData } = await supabase
-        .from('channels')
-        .select('*')
-        .eq('server_id', serverId)
-        .order('position', { ascending: true })
+      // 2. Check if user is owner or member
+      const isOwner = serverData.owner_id === user.id
+      let isMember = false
+      if (!isOwner) {
+        const { data: memberCheck } = await supabase
+          .from('server_members')
+          .select('id')
+          .eq('server_id', serverId)
+          .eq('user_id', user.id)
+          .maybeSingle()
+        isMember = !!memberCheck
+      }
 
-      if (channelData) {
-        setChannels(channelData)
+      if (isOwner || isMember) {
+        setServer(serverData)
+        // 3. Fetch channels from Supabase
+        const { data: channelData } = await supabase
+          .from('channels')
+          .select('*')
+          .eq('server_id', serverId)
+          .order('position', { ascending: true })
+
+        setChannels(channelData || [])
+      } else {
+        setServer(null)
+        setChannels([])
       }
     }
 
@@ -269,8 +287,14 @@ export default function ChannelSidebar({
             {server?.name ?? 'Loading...'}
           </h2>
           <div className="flex items-center gap-1.5">
-            <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-black text-amber-500 dark:text-amber-400">
-              👑 OWNER
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-[10px] font-black ${
+                server?.owner_id === user?.id
+                  ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400'
+                  : 'bg-purple-500/20 text-purple-600 dark:text-purple-400'
+              }`}
+            >
+              {server?.owner_id === user?.id ? '👑 OWNER' : '🎮 MEMBER'}
             </span>
             {onClose && (
               <button
@@ -302,17 +326,21 @@ export default function ChannelSidebar({
             <div />
           )}
 
-          {/* Settings icon below the owner badge */}
-          <button
-            onClick={() => {
-              setIsServerSettingsOpen(true)
-              onClose?.()
-            }}
-            className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs"
-            title="Server Settings"
-          >
-            ⚙️
-          </button>
+          {/* Settings icon below the owner badge (visible to owner) */}
+          {server?.owner_id === user?.id ? (
+            <button
+              onClick={() => {
+                setIsServerSettingsOpen(true)
+                onClose?.()
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs"
+              title="Server Settings"
+            >
+              ⚙️
+            </button>
+          ) : (
+            <div />
+          )}
         </div>
       </div>
 

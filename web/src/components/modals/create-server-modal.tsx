@@ -8,17 +8,19 @@ import { generateInviteCode } from '@/lib/invite'
 
 interface CreateServerModalProps {
   isOpen: boolean
+  initialMode?: 'create' | 'join'
   onClose: () => void
   onCreated: (serverId: string) => void
 }
 
 export default function CreateServerModal({
   isOpen,
+  initialMode = 'create',
   onClose,
   onCreated,
 }: CreateServerModalProps) {
   const [mounted, setMounted] = useState(false)
-  const [mode, setMode] = useState<'create' | 'join'>('create')
+  const [mode, setMode] = useState<'create' | 'join'>(initialMode)
   const [serverName, setServerName] = useState('')
   const [inviteCode, setInviteCode] = useState('')
   const [createdInviteCode, setCreatedInviteCode] = useState<string | null>(null)
@@ -31,16 +33,24 @@ export default function CreateServerModal({
     setMounted(true)
   }, [])
 
+  useEffect(() => {
+    if (initialMode) setMode(initialMode)
+  }, [initialMode, isOpen])
+
   if (!mounted || !isOpen) return null
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     const name = serverName.trim()
     if (!name) return
+    if (!user) {
+      setError('You must be logged in to create a squad.')
+      return
+    }
     setLoading(true)
     setError('')
 
-    const userId = user?.id || '00000000-0000-0000-0000-000000000001'
+    const userId = user.id
     const code = generateInviteCode()
 
     try {
@@ -100,33 +110,23 @@ export default function CreateServerModal({
     setLoading(true)
     setError('')
 
-    const userId = user?.id || '00000000-0000-0000-0000-000000000001'
+    if (!user) {
+      setError('You must be logged in to join a squad.')
+      return
+    }
+
+    const userId = user.id
 
     try {
-      // Find server by invite code
-      const { data: server, error: findErr } = await supabase
-        .from('servers')
-        .select('*')
-        .ilike('invite_code', code)
-        .maybeSingle()
+      // Find and join server via secure RPC function
+      const { data: server, error: rpcErr } = await supabase.rpc('join_server_by_invite', {
+        invite_code_input: code,
+      })
 
-      if (findErr || !server) {
+      if (rpcErr) throw rpcErr
+      if (!server || !server.id) {
         throw new Error('Squad invite code not found. Check the code and try again!')
       }
-
-      // Join server
-      const { error: joinErr } = await supabase
-        .from('server_members')
-        .upsert(
-          {
-            server_id: server.id,
-            user_id: userId,
-            role: 'member',
-          },
-          { onConflict: 'server_id,user_id' }
-        )
-
-      if (joinErr) throw joinErr
 
       onCreated(server.id)
     } catch (err: any) {

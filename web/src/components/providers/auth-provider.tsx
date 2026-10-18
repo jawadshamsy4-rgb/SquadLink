@@ -4,45 +4,27 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
-interface AuthContextType {
-  user: User | null
-  profile: UserProfile | null
-  loading: boolean
-  signOut: () => Promise<void>
-}
-
-interface UserProfile {
+export interface UserProfile {
   id: string
   username: string
   avatar_url: string
   email: string
 }
 
-// Fallback mock profile so UI components have complete preview data without login
-const MOCK_USER: User = {
-  id: '00000000-0000-0000-0000-000000000001',
-  app_metadata: {},
-  user_metadata: { username: 'SquadLeader' },
-  aud: 'authenticated',
-  created_at: new Date().toISOString(),
-  email: 'guest@squadlink.gg',
-  phone: '',
-  role: 'authenticated',
-  updated_at: new Date().toISOString(),
-}
-
-const MOCK_PROFILE: UserProfile = {
-  id: '00000000-0000-0000-0000-000000000001',
-  username: 'SquadLeader',
-  avatar_url: '',
-  email: 'guest@squadlink.gg',
+interface AuthContextType {
+  user: User | null
+  profile: UserProfile | null
+  loading: boolean
+  signOut: () => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
-  user: MOCK_USER,
-  profile: MOCK_PROFILE,
-  loading: false,
+  user: null,
+  profile: null,
+  loading: true,
   signOut: async () => {},
+  refreshProfile: async () => {},
 })
 
 export function useAuth() {
@@ -50,40 +32,119 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(MOCK_USER)
-  const [profile, setProfile] = useState<UserProfile | null>(MOCK_PROFILE)
-  const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user: realUser } } = await supabase.auth.getUser()
-      if (realUser) {
-        setUser(realUser)
-        const { data } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', realUser.id)
-          .single()
-        if (data) setProfile(data)
+  const syncProfile = async (currentUser: User) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', currentUser.id)
+        .maybeSingle()
+
+      if (data) {
+        setProfile(data)
       } else {
-        // Fallback to mock session for bypass/preview mode
-        setUser(MOCK_USER)
-        setProfile(MOCK_PROFILE)
+        // If profile doesn't exist yet, insert it
+        const fallbackUsername =
+          (currentUser.user_metadata?.username as string) ||
+          currentUser.email?.split('@')[0] ||
+          'Gamer'
+        const fallbackAvatar =
+          (currentUser.user_metadata?.avatar_url as string) ||
+          `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(fallbackUsername)}`
+
+        const newProfile: UserProfile = {
+          id: currentUser.id,
+          username: fallbackUsername,
+          avatar_url: fallbackAvatar,
+          email: currentUser.email || '',
+        }
+
+        await supabase.from('users').upsert(newProfile, { onConflict: 'id' })
+        setProfile(newProfile)
       }
-      setLoading(false)
+    } catch (err) {
+      console.warn('Could not sync user profile:', err)
+    }
+  }
+
+  const refreshProfile = async () => {
+    if (!user) return
+    await syncProfile(user)
+  }
+
+  useEffect(() => {
+    let isMounted = true
+
+    // 1. Initial session load
+    const initAuth = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (!isMounted) return
+
+        if (session?.user) {
+          setUser(session.user)
+          await syncProfile(session.user)
+        } else {
+          setUser(null)
+          setProfile(null)
+        }
+      } catch (err) {
+        console.error('Error fetching auth session:', err)
+        if (isMounted) {
+          setUser(null)
+          setProfile(null)
+        }
+      } finally {
+        if (isMounted) setLoading(false)
+      }
     }
 
-    getUser()
-  }, [])
+    initAuth()
+
+    // 2. Real-time auth state change subscription
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return
+
+      if (session?.user) {
+        setUser(session.user)
+        await syncProfile(session.user)
+      } else {
+        setUser(null)
+        setProfile(null)
+      }
+      setLoading(false)
+    })
+
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [supabase])
 
   const signOut = async () => {
-    await supabase.auth.signOut()
-    alert('Logged out (Auth currently bypassed in Preview mode).')
+    try {
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.warn('Sign out error:', err)
+    } finally {
+      setUser(null)
+      setProfile(null)
+      window.location.href = '/'
+    }
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

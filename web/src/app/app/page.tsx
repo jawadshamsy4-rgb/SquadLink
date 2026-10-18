@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/providers/auth-provider'
 import { createClient } from '@/lib/supabase/client'
 import ServerSidebar from '@/components/layout/server-sidebar'
@@ -20,16 +21,28 @@ interface Channel {
 
 export default function AppPage() {
   const { user, loading } = useAuth()
-  const [selectedServerId, setSelectedServerId] = useState<string | null>('11111111-1111-1111-1111-111111111111')
+  const router = useRouter()
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null)
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isCreateServerOpen, setIsCreateServerOpen] = useState(false)
+  const [createServerMode, setCreateServerMode] = useState<'create' | 'join'>('create')
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const supabase = createClient()
 
-  // Auto-select first channel of default server so viewport is immediately populated
+  // Redirect to login if user is not authenticated
   useEffect(() => {
-    if (!selectedServerId) return
+    if (!loading && !user) {
+      router.replace('/login')
+    }
+  }, [loading, user, router])
+
+  // Auto-select first channel of selected server so viewport is populated
+  useEffect(() => {
+    if (!selectedServerId) {
+      setSelectedChannel(null)
+      return
+    }
     const fetchFirstChannel = async () => {
       const { data } = await supabase
         .from('channels')
@@ -39,19 +52,36 @@ export default function AppPage() {
 
       if (data && data.length > 0) {
         setSelectedChannel(data[0] as Channel)
+      } else {
+        setSelectedChannel(null)
       }
     }
     fetchFirstChannel()
   }, [selectedServerId])
 
-  if (loading) {
+  const handleServersLoaded = (loadedServers: any[]) => {
+    if (loadedServers.length === 0) {
+      setSelectedServerId(null)
+      setSelectedChannel(null)
+      return
+    }
+
+    // Pick first server if none selected or if selected server is no longer in list
+    if (!selectedServerId || !loadedServers.some((s) => s.id === selectedServerId)) {
+      setSelectedServerId(loadedServers[0].id)
+    }
+  }
+
+  if (loading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-slate-100 dark:bg-slate-950 transition-colors duration-200">
         <div className="flex flex-col items-center gap-4">
           <div className="relative h-16 w-16 rounded-2xl overflow-hidden shadow-2xl shadow-purple-500/30 border border-purple-500/20 animate-pulse">
             <img src="/logo.png" alt="SquadLink" className="h-full w-full object-cover" />
           </div>
-          <p className="font-semibold text-sm text-slate-500 dark:text-gray-400">Loading SquadLink...</p>
+          <p className="font-semibold text-sm text-slate-500 dark:text-gray-400">
+            {loading ? 'Loading SquadLink...' : 'Redirecting to login...'}
+          </p>
         </div>
       </div>
     )
@@ -85,9 +115,11 @@ export default function AppPage() {
             setSelectedChannel(null)
           }}
           onCreateServerClick={() => {
+            setCreateServerMode('create')
             setIsCreateServerOpen(true)
             setIsMobileNavOpen(false)
           }}
+          onServersLoaded={handleServersLoaded}
         />
 
         {/* 2. Channel Sidebar */}
@@ -121,6 +153,7 @@ export default function AppPage() {
       {isCreateServerOpen && (
         <CreateServerModal
           isOpen={isCreateServerOpen}
+          initialMode={createServerMode}
           onClose={() => setIsCreateServerOpen(false)}
           onCreated={(newServerId) => {
             setSelectedServerId(newServerId)

@@ -55,7 +55,7 @@ export default function MessageList({ channelId, onReply }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const { user } = useAuth()
   const supabase = createClient()
-  const currentUserId = user?.id || '00000000-0000-0000-0000-000000000001'
+  const currentUserId = user?.id || ''
 
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

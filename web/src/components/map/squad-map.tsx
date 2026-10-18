@@ -82,8 +82,8 @@ export default function SquadMap({ serverId }: SquadMapProps) {
   const realtimeChannelRef = useRef<any>(null)
 
   const supabase = createClient()
-  const currentUserId = user?.id || '00000000-0000-0000-0000-000000000001'
-  const currentUserName = user?.user_metadata?.username || user?.email?.split('@')[0] || 'SquadLeader'
+  const currentUserId = user?.id || ''
+  const currentUserName = user?.user_metadata?.username || user?.email?.split('@')[0] || 'User'
 
   // Inject Leaflet CDN CSS if not already present
   useEffect(() => {
@@ -100,6 +100,7 @@ export default function SquadMap({ serverId }: SquadMapProps) {
 
   // 1. Fetch locations from Supabase
   const fetchLocations = useCallback(async () => {
+    if (!currentUserId || !serverId) return
     try {
       // Check current user location sharing preference
       const { data: myLoc } = await supabase

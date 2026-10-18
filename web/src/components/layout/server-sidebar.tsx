@@ -26,6 +26,7 @@ interface ServerSidebarProps {
   onSelectServer: (serverId: string) => void
   onHomeClick: () => void
   onCreateServerClick: () => void
+  onServersLoaded?: (servers: Server[]) => void
 }
 
 export default function ServerSidebar({
@@ -33,28 +34,44 @@ export default function ServerSidebar({
   onSelectServer,
   onHomeClick,
   onCreateServerClick,
+  onServersLoaded,
 }: ServerSidebarProps) {
   const [servers, setServers] = useState<Server[]>([])
   const { user } = useAuth()
   const supabase = createClient()
 
   const fetchServers = async () => {
-    const { data: allServers } = await supabase
-      .from('servers')
-      .select('*')
-      .order('created_at', { ascending: true })
+    if (!user) {
+      setServers([])
+      onServersLoaded?.([])
+      return
+    }
 
-    if (allServers && allServers.length > 0) {
-      setServers(allServers)
-    } else {
-      setServers([
-        {
-          id: '11111111-1111-1111-1111-111111111111',
-          name: 'Main Squad',
-          icon_url: null,
-          invite_code: 'SQUAD1',
-        },
-      ])
+    try {
+      // 1. Fetch server IDs where current user is a member
+      const { data: memberRows } = await supabase
+        .from('server_members')
+        .select('server_id')
+        .eq('user_id', user.id)
+
+      const memberServerIds = (memberRows || []).map((m) => m.server_id)
+
+      // 2. Fetch servers where user is the owner OR a member
+      let query = supabase.from('servers').select('*')
+      if (memberServerIds.length > 0) {
+        query = query.or(`owner_id.eq.${user.id},id.in.(${memberServerIds.join(',')})`)
+      } else {
+        query = query.eq('owner_id', user.id)
+      }
+
+      const { data: userServers } = await query.order('created_at', { ascending: true })
+      const list = userServers || []
+      setServers(list)
+      onServersLoaded?.(list)
+    } catch (err) {
+      console.warn('Error fetching servers:', err)
+      setServers([])
+      onServersLoaded?.([])
     }
   }
 
@@ -66,6 +83,11 @@ export default function ServerSidebar({
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'servers' },
+        () => fetchServers()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'server_members' },
         () => fetchServers()
       )
       .subscribe()

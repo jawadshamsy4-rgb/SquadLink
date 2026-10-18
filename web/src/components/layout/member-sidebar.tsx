@@ -40,9 +40,9 @@ export default function MemberSidebar({
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
-  const currentUserId = user?.id || '00000000-0000-0000-0000-000000000001'
+  const currentUserId = user?.id || ''
   const currentUsername =
-    profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'SquadLeader'
+    profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'User'
   const currentUserAvatar =
     profile?.avatar_url ||
     user?.user_metadata?.avatar_url ||
@@ -53,15 +53,19 @@ export default function MemberSidebar({
     try {
       setLoading(true)
 
-      // 1. Fetch server name
+      // 1. Fetch server name & owner
+      let serverOwnerId = ''
       if (serverId) {
         const { data: serverData } = await supabase
           .from('servers')
-          .select('name')
+          .select('name, owner_id')
           .eq('id', serverId)
           .maybeSingle()
         if (serverData?.name) {
           setServerDisplayName(serverData.name)
+        }
+        if (serverData?.owner_id) {
+          serverOwnerId = serverData.owner_id
         }
       }
 
@@ -97,15 +101,15 @@ export default function MemberSidebar({
         }
       }
 
-      // If user is logged in and not in the list yet, include current user
+      // If owner is logged in and not in the list yet, include current user as owner
       const hasMe = fetchedList.some((m) => m.id === currentUserId)
-      if (!hasMe) {
+      if (!hasMe && currentUserId && serverOwnerId === currentUserId) {
         fetchedList.unshift({
           id: currentUserId,
           username: currentUsername,
           avatar_url: currentUserAvatar,
           status: 'online',
-          role: 'Squad Leader',
+          role: 'Server Owner',
           isOwner: true,
           joined_at: new Date().toISOString(),
         })

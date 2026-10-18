@@ -47,7 +47,12 @@ export default function ProfilePage() {
     setSaveSuccess(false)
 
     try {
-      const userId = user?.id || '00000000-0000-0000-0000-000000000001'
+      if (!user) {
+        alert('You must be logged in to update your profile.')
+        setSaving(false)
+        return
+      }
+      const userId = user.id
 
       const { error } = await supabase
         .from('users')

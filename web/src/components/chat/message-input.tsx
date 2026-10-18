@@ -44,7 +44,13 @@ export default function MessageInput({
       textareaRef.current.style.height = 'auto'
     }
 
-    const userId = user?.id || '00000000-0000-0000-0000-000000000001'
+    if (!user) {
+      alert('You must be logged in to send messages.')
+      setSending(false)
+      return
+    }
+
+    const userId = user.id
 
     // Format content with reply reference if replying
     let finalContent = trimmed
