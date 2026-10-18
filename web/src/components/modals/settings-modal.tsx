@@ -55,11 +55,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   // Mic test loopback and stream references
   const micTestStreamRef = useRef<MediaStream | null>(null)
   const micTestAudioRef = useRef<HTMLAudioElement | null>(null)
+  const micTestAudioElementRef = useRef<HTMLAudioElement | null>(null)
   const micTestCtxRef = useRef<AudioContext | null>(null)
   const micTestAnalyserRef = useRef<AnalyserNode | null>(null)
   const micTestSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const micTestIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const micTestTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const supabase = createClient()
 
@@ -253,10 +253,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       clearInterval(micTestIntervalRef.current)
       micTestIntervalRef.current = null
     }
-    if (micTestTimeoutRef.current) {
-      clearTimeout(micTestTimeoutRef.current)
-      micTestTimeoutRef.current = null
-    }
     if (micTestSourceRef.current) {
       try {
         micTestSourceRef.current.disconnect()
@@ -314,7 +310,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       micTestStreamRef.current = stream
 
       // 1. Play back microphone audio through selected output device
-      const audioEl = new Audio()
+      const audioEl = micTestAudioElementRef.current || new Audio()
       audioEl.srcObject = stream
       audioEl.volume = 1.0
       if (selectedOutputId !== 'default' && typeof (audioEl as any).setSinkId === 'function') {
@@ -357,11 +353,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         setMicVolume(avg)
       }, 40)
       micTestIntervalRef.current = interval
-
-      // Auto stop after 20 seconds
-      micTestTimeoutRef.current = setTimeout(() => {
-        stopMicrophoneTest()
-      }, 20000)
     } catch (err: any) {
       console.error('Could not test microphone:', err)
       alert(`Could not test microphone: ${err.message}`)
@@ -437,6 +428,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 md:p-8 animate-in fade-in duration-200 select-none">
+      {/* Persistent Audio Tag for Hardware Loopback without GC or throttling */}
+      <audio ref={micTestAudioElementRef} style={{ display: 'none' }} playsInline autoPlay />
+
       {/* Expanded Modal Window */}
       <div className="relative flex flex-col md:flex-row w-full max-w-5xl h-[85vh] rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121620] shadow-2xl overflow-hidden transition-colors duration-200">
         {/* Left Settings Sidebar */}
