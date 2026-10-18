@@ -143,24 +143,14 @@ export default function LandingPage() {
                 <span>Download for Android</span>
               </button>
 
-              {/* 3. Log In / Open SquadLink */}
-              {user ? (
-                <Link
-                  href="/app"
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752c4] text-white font-black text-base px-7 py-4 rounded-full shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
-                >
-                  <span>Open SquadLink</span>
-                  <span className="text-lg group-hover:translate-x-1 transition-transform">→</span>
-                </Link>
-              ) : (
-                <Link
-                  href="/login"
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752c4] text-white font-black text-base px-7 py-4 rounded-full shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
-                >
-                  <span>Log In</span>
-                  <span className="text-lg group-hover:translate-x-1 transition-transform">→</span>
-                </Link>
-              )}
+              {/* 3. Open SquadLink in your browser */}
+              <Link
+                href="/app"
+                className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#5865F2] hover:bg-[#4752c4] text-white font-black text-base px-7 py-4 rounded-full shadow-xl shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
+              >
+                <span>Open SquadLink in your browser</span>
+                <span className="text-lg group-hover:translate-x-1 transition-transform">→</span>
+              </Link>
             </div>
 
             {/* Quick stats / trust row */}
@@ -438,10 +428,10 @@ export default function LandingPage() {
             </button>
 
             <Link
-              href={user ? '/app' : '/login'}
+              href="/app"
               className="flex items-center gap-2 bg-[#5865F2] hover:bg-[#4752c4] text-white font-black text-sm sm:text-base px-7 py-3.5 rounded-full shadow-lg shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all cursor-pointer"
             >
-              <span>{user ? 'Open SquadLink in your browser' : 'Log In to SquadLink'}</span>
+              <span>Open SquadLink in your browser</span>
             </Link>
           </div>
         </div>
