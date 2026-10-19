@@ -157,6 +157,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
                 ref={(el) => {
                   if (el && el.srcObject !== share.stream) {
                     el.srcObject = share.stream
+                    el.play().catch(() => {})
                   }
                   if (share.isLocal) {
                     registerVideoContainer(el)
@@ -164,7 +165,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
                 }}
                 autoPlay
                 playsInline
-                muted={share.isLocal}
+                muted
                 className="h-full w-full object-contain"
               />
               <div className="absolute top-4 left-4 flex items-center gap-2 rounded-xl bg-purple-600/90 px-3 py-1.5 text-xs font-black text-white backdrop-blur-md shadow-lg">

@@ -1089,43 +1089,40 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       } else {
         let stream: MediaStream | null = null
 
+        // 1. Try getDisplayMedia (Desktop / PC / supported browsers)
         if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
           try {
             stream = await navigator.mediaDevices.getDisplayMedia({
-              video: {
-                cursor: 'always',
-                frameRate: { ideal: 60, max: 60 },
-              } as any,
+              video: true,
               audio: true,
             })
           } catch (audioErr: any) {
-            console.warn('Screen share with audio unavailable, falling back to video only:', audioErr.message)
+            console.warn('Screen share with audio unavailable, trying video only:', audioErr.message)
             try {
               stream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                  cursor: 'always',
-                  frameRate: { ideal: 60, max: 60 },
-                } as any,
+                video: true,
                 audio: false,
               })
             } catch (videoErr: any) {
-              console.warn('Screen capture cancelled or denied:', videoErr.message)
-              return
+              console.warn('getDisplayMedia failed or denied on this device:', videoErr.message)
             }
           }
-        } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          // Mobile / WebView fallback: Stream camera feed as live tactical video in the squad channel
+        }
+
+        // 2. Fallback to Camera / Video Stream (Mobile / Android WebView)
+        if (!stream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           try {
             stream = await navigator.mediaDevices.getUserMedia({
               video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
               audio: false,
             })
           } catch (camErr: any) {
-            alert('Camera or screen stream unavailable: ' + camErr.message)
-            return
+            console.warn('Camera stream fallback failed:', camErr.message)
           }
-        } else {
-          alert('Screen sharing is not supported on this platform.')
+        }
+
+        if (!stream) {
+          alert('Screen sharing or video stream is unavailable or permission was cancelled.')
           return
         }
 

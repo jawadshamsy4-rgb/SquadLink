@@ -1,11 +1,11 @@
-const { app, BrowserWindow, Menu, desktopCapturer } = require('electron')
+const { app, BrowserWindow, Menu, desktopCapturer, session } = require('electron')
 const path = require('path')
 
 // Determine if dev mode
 const isDev = !app.isPackaged
 
 // Enable WebRTC features and allow autoplay without manual gesture
-app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer')
+app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer,WinSystemLocationProvider')
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 function createWindow() {
@@ -36,35 +36,44 @@ function createWindow() {
   const defaultUA = mainWindow.webContents.getUserAgent()
   mainWindow.webContents.setUserAgent(`${defaultUA} SquadLink-Desktop/1.0.0`)
 
-  // Grant all WebRTC media and display capture permissions unconditionally
-  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(true)
-  })
-
-  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
-    return true
-  })
-
+  // Grant all permissions unconditionally on both sessions
+  const grantAll = (webContents, permission, callback) => callback(true)
+  mainWindow.webContents.session.setPermissionRequestHandler(grantAll)
+  mainWindow.webContents.session.setPermissionCheckHandler(() => true)
   mainWindow.webContents.session.setDevicePermissionHandler(() => true)
 
-  // Handle getDisplayMedia (screensharing) in Electron 33+
-  if (mainWindow.webContents.session.setDisplayMediaRequestHandler) {
-    mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
-      desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
-        if (sources.length > 0) {
-          const response = { video: sources[0] }
-          if (request.audio) {
-            response.audio = 'loopback'
-          }
-          callback(response)
-        } else {
-          callback({})
-        }
-      }).catch((e) => {
-        console.error('Desktop capturer error:', e)
-        callback({})
+  session.defaultSession.setPermissionRequestHandler(grantAll)
+  session.defaultSession.setPermissionCheckHandler(() => true)
+  session.defaultSession.setDevicePermissionHandler(() => true)
+
+  // Handle getDisplayMedia (screensharing) in Electron
+  const handleDisplayMedia = async (request, callback) => {
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 0, height: 0 },
       })
-    })
+      if (sources && sources.length > 0) {
+        const screenSource = sources.find((s) => s.id.startsWith('screen:')) || sources[0]
+        const response = { video: screenSource }
+        if (request.audio) {
+          response.audio = 'loopback'
+        }
+        callback(response)
+      } else {
+        callback(null)
+      }
+    } catch (e) {
+      console.error('Desktop capturer error:', e)
+      callback(null)
+    }
+  }
+
+  if (session.defaultSession.setDisplayMediaRequestHandler) {
+    session.defaultSession.setDisplayMediaRequestHandler(handleDisplayMedia)
+  }
+  if (mainWindow.webContents.session.setDisplayMediaRequestHandler) {
+    mainWindow.webContents.session.setDisplayMediaRequestHandler(handleDisplayMedia)
   }
 
   // Prevent desktop app from ever navigating to the marketing website root

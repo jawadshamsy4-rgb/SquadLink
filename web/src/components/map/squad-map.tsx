@@ -60,6 +60,21 @@ const PING_CONFIG = {
   loot: { emoji: '📦', label: 'Loot / Supply Drop', color: '#f59e0b' },
 }
 
+async function fetchIpLocation(): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetch('https://ipwho.is/')
+    if (res.ok) {
+      const data = await res.json()
+      if (data.success && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+        return { lat: data.latitude, lng: data.longitude }
+      }
+    }
+  } catch (e) {
+    console.debug('IP geolocation fallback failed:', e)
+  }
+  return null
+}
+
 export default function SquadMap({ serverId }: SquadMapProps) {
   const { user } = useAuth()
   const { theme } = useTheme()
@@ -100,18 +115,19 @@ export default function SquadMap({ serverId }: SquadMapProps) {
 
   // 1. Fetch locations from Supabase
   const fetchLocations = useCallback(async () => {
-    if (!currentUserId || !serverId) return
+    if (!serverId) return
     try {
-      // Check current user location sharing preference
-      const { data: myLoc } = await supabase
-        .from('locations')
-        .select('is_sharing_location')
-        .eq('user_id', currentUserId)
-        .eq('server_id', serverId)
-        .maybeSingle()
+      if (currentUserId) {
+        const { data: myLoc } = await supabase
+          .from('locations')
+          .select('is_sharing_location')
+          .eq('user_id', currentUserId)
+          .eq('server_id', serverId)
+          .maybeSingle()
 
-      if (myLoc !== null && myLoc !== undefined) {
-        setIsSharingLocation(myLoc.is_sharing_location ?? true)
+        if (myLoc !== null && myLoc !== undefined) {
+          setIsSharingLocation(myLoc.is_sharing_location ?? true)
+        }
       }
 
       // Fetch all members with sharing enabled
@@ -126,7 +142,7 @@ export default function SquadMap({ serverId }: SquadMapProps) {
           .filter((loc) => loc.latitude !== 0 || loc.longitude !== 0)
           .map((loc) => ({
             id: loc.users?.id || loc.user_id,
-            username: loc.users?.username || 'Squad Mate',
+            username: loc.users?.username || (loc.user_id === currentUserId ? currentUserName : 'Squad Mate'),
             avatar_url: loc.users?.avatar_url || null,
             latitude: loc.latitude,
             longitude: loc.longitude,
@@ -134,20 +150,26 @@ export default function SquadMap({ serverId }: SquadMapProps) {
             is_sharing_location: loc.is_sharing_location,
           }))
 
-        setMembers(mapped)
+        setMembers((prev) => {
+          // If we already have a local pin for current user that has valid coordinates, preserve it
+          const localExisting = prev.find((m) => m.id === currentUserId && (m.latitude !== 0 || m.longitude !== 0))
+          if (localExisting && !mapped.some((m) => m.id === currentUserId)) {
+            return [...mapped, localExisting]
+          }
+          return mapped
+        })
         setLoading(false)
         return
       }
 
-      // Zero fake members - only real locations
-      setMembers([])
+      // Zero fake members - preserve local user if already mapped
+      setMembers((prev) => prev.filter((m) => m.id === currentUserId && (m.latitude !== 0 || m.longitude !== 0)))
     } catch (e) {
       console.error('Error fetching squad locations:', e)
-      setMembers([])
     } finally {
       setLoading(false)
     }
-  }, [serverId, supabase])
+  }, [serverId, currentUserId, currentUserName, supabase])
 
   // 2. Initialize Leaflet Map with CARTO tiles
   useEffect(() => {
@@ -471,9 +493,13 @@ export default function SquadMap({ serverId }: SquadMapProps) {
     return () => resizeObserver.disconnect()
   }, [])
 
-  // 7. Supabase Realtime for Locations & Tactical Pings
+  // 7. Supabase Realtime for Locations & Tactical Pings + Auto Location Sync on Mount
   useEffect(() => {
     fetchLocations()
+
+    if (serverId && currentUserId) {
+      sendCurrentWebLocation()
+    }
 
     const channel = supabase
       .channel(`squad-map-${serverId}`)
@@ -522,36 +548,66 @@ export default function SquadMap({ serverId }: SquadMapProps) {
     )
   }
 
-  // 9. Single GPS fetch
-  const sendCurrentWebLocation = () => {
-    setGpsStatus('Acquiring GPS...')
+  // 9. Single GPS fetch with fast IP fallback & instant local pin update
+  const sendCurrentWebLocation = async () => {
+    setGpsStatus('Acquiring location...')
+
+    const handleCoordsAcquired = async (lat: number, lng: number, source: string) => {
+      // 1. Immediately render own pin on the map without waiting for server roundtrip
+      if (currentUserId) {
+        const myPin: MemberLocation = {
+          id: currentUserId,
+          username: currentUserName,
+          avatar_url: user?.user_metadata?.avatar_url || null,
+          latitude: lat,
+          longitude: lng,
+          updated_at: new Date().toISOString(),
+          is_sharing_location: true,
+        }
+        setMembers((prev) => {
+          const others = prev.filter((m) => m.id !== currentUserId)
+          return [...others, myPin]
+        })
+      }
+
+      // 2. Persist to Supabase
+      await pushLocationToSupabase(lat, lng)
+
+      setGpsStatus(`📍 ${source} Synced!`)
+      setTimeout(() => setGpsStatus(''), 3000)
+
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.flyTo([lat, lng], 15, { duration: 1.5 })
+      }
+
+      fetchLocations()
+    }
+
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          const lat = position.coords.latitude
-          const lng = position.coords.longitude
-
-          await pushLocationToSupabase(lat, lng)
-
-          setGpsStatus('📍 GPS Synced!')
-          setTimeout(() => setGpsStatus(''), 3000)
-
-          if (mapInstanceRef.current) {
-            mapInstanceRef.current.flyTo([lat, lng], 15, { duration: 1.5 })
+          await handleCoordsAcquired(position.coords.latitude, position.coords.longitude, 'GPS')
+        },
+        async (err) => {
+          console.warn('GPS hardware error or timeout, trying IP fallback:', err.message)
+          const ipLoc = await fetchIpLocation()
+          if (ipLoc) {
+            await handleCoordsAcquired(ipLoc.lat, ipLoc.lng, 'Location')
+          } else {
+            setGpsStatus(`Location error: ${err.message}`)
+            setTimeout(() => setGpsStatus(''), 4000)
           }
-
-          fetchLocations()
         },
-        (err) => {
-          console.warn('GPS error:', err.message)
-          setGpsStatus(`GPS error: ${err.message}`)
-          setTimeout(() => setGpsStatus(''), 4000)
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
       )
     } else {
-      setGpsStatus('Geolocation not supported on this device')
-      setTimeout(() => setGpsStatus(''), 4000)
+      const ipLoc = await fetchIpLocation()
+      if (ipLoc) {
+        await handleCoordsAcquired(ipLoc.lat, ipLoc.lng, 'Location')
+      } else {
+        setGpsStatus('Geolocation not supported on this device')
+        setTimeout(() => setGpsStatus(''), 4000)
+      }
     }
   }
 
