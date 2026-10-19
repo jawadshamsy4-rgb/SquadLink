@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/providers/auth-provider'
+import { useVoice } from '@/components/providers/voice-provider'
 import { createClient } from '@/lib/supabase/client'
 import ServerSidebar from '@/components/layout/server-sidebar'
 import ChannelSidebar from '@/components/layout/channel-sidebar'
@@ -21,8 +22,13 @@ interface Channel {
 
 export default function AppPage() {
   const { user, loading } = useAuth()
+  const { setVoiceServerId } = useVoice()
   const router = useRouter()
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setVoiceServerId(selectedServerId)
+  }, [selectedServerId, setVoiceServerId])
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isCreateServerOpen, setIsCreateServerOpen] = useState(false)
