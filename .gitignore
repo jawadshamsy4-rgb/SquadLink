@@ -45,3 +45,7 @@ update_generic_branding.js
 
 .vercel
 .env*
+*.jar
+*.tgz
+package/
+desktop/dist/

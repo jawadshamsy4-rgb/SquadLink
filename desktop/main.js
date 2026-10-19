@@ -33,9 +33,8 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:3000')
     mainWindow.webContents.openDevTools()
   } else {
-    // In production, load from the deployed URL or local build
-    // Change this URL to your deployed SquadLink web app URL
-    mainWindow.loadURL('http://localhost:3000')
+    // In production, load from the live deployed SquadLink app URL
+    mainWindow.loadURL('https://squad-link-five.vercel.app/app')
   }
 
   mainWindow.once('ready-to-show', () => {

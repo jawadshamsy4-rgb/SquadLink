@@ -10,14 +10,22 @@ export default function LandingPage() {
 
   const handleDownloadWindows = () => {
     setDownloadModal('windows')
-    // Trigger download simulation
     const link = document.createElement('a')
-    link.href = '#download-windows'
-    // In production this points to actual .exe release
+    link.href = '/api/download/windows'
+    link.download = 'SquadLink-Setup-1.0.0.exe'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   const handleDownloadAndroid = () => {
     setDownloadModal('android')
+    const link = document.createElement('a')
+    link.href = '/api/download/android'
+    link.download = 'SquadLink.apk'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   return (
@@ -487,27 +495,33 @@ export default function LandingPage() {
                 <span>Optimized with hardware acceleration and global push-to-talk keybinds.</span>
               </div>
               <p>
-                Compatibility: <strong>Windows 10 / 11 (64-bit)</strong>. File size: <strong>78.4 MB</strong>.
+                Compatibility: <strong>Windows 10 / 11 (64-bit)</strong>. File size: <strong>78.2 MB</strong>.
               </p>
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2">
+                <p className="font-bold text-white text-[11px] uppercase tracking-wider">Installation Quick Guide:</p>
+                <ol className="list-decimal list-inside space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                  <li>Your download starts automatically. If not, click below.</li>
+                  <li>Run <span className="text-white font-mono">SquadLink-Setup-1.0.0.exe</span>.</li>
+                  <li>If prompted by Windows SmartScreen, click <strong className="text-white">More info</strong> → <strong className="text-white">Run anyway</strong>.</li>
+                </ol>
+              </div>
             </div>
 
             <div className="flex gap-3 pt-2">
               <a
                 href="/app"
-                className="flex-1 text-center py-2.5 rounded-2xl bg-white text-slate-950 font-black text-xs hover:bg-slate-200 transition-colors"
+                className="flex-1 text-center py-2.5 rounded-2xl bg-white text-slate-950 font-black text-xs hover:bg-slate-200 transition-colors flex items-center justify-center"
                 onClick={() => setDownloadModal(null)}
               >
-                Launch in Browser Instead
+                Launch in Browser
               </a>
-              <button
-                onClick={() => {
-                  alert('Download started! SquadLink-Setup-x64.exe will begin downloading.')
-                  setDownloadModal(null)
-                }}
-                className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-600 text-white font-black text-xs hover:opacity-90 transition-opacity cursor-pointer shadow-md"
+              <a
+                href="/api/download/windows"
+                download="SquadLink-Setup-1.0.0.exe"
+                className="flex-1 text-center py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-cyan-600 text-white font-black text-xs hover:opacity-90 transition-opacity cursor-pointer shadow-md flex items-center justify-center gap-1.5"
               >
-                Start Download (.exe)
-              </button>
+                <span>Download .exe (78 MB)</span>
+              </a>
             </div>
           </div>
         </div>
@@ -524,7 +538,7 @@ export default function LandingPage() {
                 </div>
                 <div>
                   <h4 className="text-base font-black text-white">SquadLink for Android</h4>
-                  <p className="text-xs text-slate-400">Version 1.2.0 • APK & PWA</p>
+                  <p className="text-xs text-slate-400">Version 1.0.0 • Signed APK</p>
                 </div>
               </div>
               <button
@@ -538,30 +552,36 @@ export default function LandingPage() {
             <div className="py-5 space-y-4 text-xs text-slate-300">
               <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-2xl p-3 flex items-center gap-3">
                 <span className="text-lg">🔋</span>
-                <span>Includes Eco GPS battery-saver mode (updates location every 10 mins).</span>
+                <span>Includes background audio and low-latency tactical squad voice.</span>
               </div>
               <p>
-                Compatibility: <strong>Android 9.0+</strong>. File size: <strong>38.2 MB</strong>.
+                Compatibility: <strong>Android 8.0+</strong>. File size: <strong>1.5 MB</strong>.
               </p>
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2">
+                <p className="font-bold text-white text-[11px] uppercase tracking-wider">Installation Quick Guide:</p>
+                <ol className="list-decimal list-inside space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                  <li>Your APK download starts automatically. If not, click below.</li>
+                  <li>Tap the downloaded <span className="text-white font-mono">SquadLink.apk</span> file.</li>
+                  <li>If prompted, enable <strong className="text-white">&quot;Install unknown apps&quot;</strong> in Settings.</li>
+                </ol>
+              </div>
             </div>
 
             <div className="flex gap-3 pt-2">
               <a
                 href="/app"
-                className="flex-1 text-center py-2.5 rounded-2xl bg-white text-slate-950 font-black text-xs hover:bg-slate-200 transition-colors"
+                className="flex-1 text-center py-2.5 rounded-2xl bg-white text-slate-950 font-black text-xs hover:bg-slate-200 transition-colors flex items-center justify-center"
                 onClick={() => setDownloadModal(null)}
               >
-                Open Web Version
+                Launch in Browser
               </a>
-              <button
-                onClick={() => {
-                  alert('Download started! SquadLink-Mobile-v1.2.0.apk will begin downloading.')
-                  setDownloadModal(null)
-                }}
-                className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs hover:opacity-90 transition-opacity cursor-pointer shadow-md"
+              <a
+                href="/api/download/android"
+                download="SquadLink.apk"
+                className="flex-1 text-center py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs hover:opacity-90 transition-opacity cursor-pointer shadow-md flex items-center justify-center gap-1.5"
               >
-                Download APK (.apk)
-              </button>
+                <span>Download APK (1.5 MB)</span>
+              </a>
             </div>
           </div>
         </div>
