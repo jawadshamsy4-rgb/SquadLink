@@ -31,6 +31,7 @@ export interface ConnectedChannelInfo {
   id: string
   name: string
   serverName?: string
+  serverId?: string
 }
 
 export interface RemoteScreenStreamInfo {
@@ -64,7 +65,7 @@ interface VoiceContextType {
   resetKeybinds: () => void
   soundEffectsEnabled: boolean
   setSoundEffectsEnabled: (enabled: boolean) => void
-  connectVoice: (channelId: string, channelName: string, serverName?: string) => Promise<void>
+  connectVoice: (channelId: string, channelName: string, serverName?: string, serverId?: string) => Promise<void>
   disconnectVoice: () => void
   toggleMute: () => void
   toggleDeafen: () => void
@@ -161,6 +162,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const queuedCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
   const isDeafenedRef = useRef(false)
   const isMutedRef = useRef(false)
+  const serverPresenceChannelRef = useRef<any>(null)
+  const isScreenSharingRef = useRef(false)
   const myIdentityRef = useRef<string>('')
   const participantsRef = useRef<ParticipantInfo[]>([])
 
@@ -173,6 +176,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     isMutedRef.current = isMuted
   }, [isMuted])
+
+  useEffect(() => {
+    isScreenSharingRef.current = isScreenSharing
+  }, [isScreenSharing])
 
   useEffect(() => {
     participantsRef.current = participants
@@ -456,7 +463,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     return pc
   }
 
-  const connectVoice = async (channelId: string, channelName: string, serverName?: string) => {
+  const connectVoice = async (
+    channelId: string,
+    channelName: string,
+    serverName?: string,
+    serverId?: string
+  ) => {
     // If already connected to this channel, no-op
     if (isConnected && connectedChannel?.id === channelId) return
 
@@ -505,6 +517,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           const bufferLength = analyser.frequencyBinCount
           const dataArray = new Uint8Array(bufferLength)
 
+          let lastSpeakingState = false
           const checkVolume = () => {
             if (!analyserRef.current) return
             analyserRef.current.getByteFrequencyData(dataArray)
@@ -521,6 +534,22 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               prev.map((p, idx) => (idx === 0 ? { ...p, isSpeaking: isSpeakingNow } : p))
             )
 
+            if (isSpeakingNow !== lastSpeakingState) {
+              lastSpeakingState = isSpeakingNow
+              if (serverPresenceChannelRef.current) {
+                serverPresenceChannelRef.current.track({
+                  identity: myIdentityRef.current,
+                  channelId: channelId,
+                  name: profile?.username || user?.user_metadata?.username || 'Shamsy',
+                  avatarUrl: profile?.avatar_url || null,
+                  isSpeaking: isSpeakingNow,
+                  isMuted: isMutedRef.current,
+                  isDeafened: isDeafenedRef.current,
+                  isScreenSharing: isScreenSharingRef.current,
+                }).catch(() => {})
+              }
+            }
+
             animFrameRef.current = requestAnimationFrame(checkVolume)
           }
 
@@ -535,7 +564,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const myName = profile?.username || user?.user_metadata?.username || 'Shamsy'
       const myAvatar = profile?.avatar_url || null
 
-      setConnectedChannel({ id: channelId, name: channelName, serverName })
+      setConnectedChannel({ id: channelId, name: channelName, serverName, serverId })
       setIsConnected(true)
       setIsConnecting(false)
       setIsMuted(false)
@@ -748,6 +777,42 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         })
 
       presenceChannelRef.current = presChannel
+
+      // Server-wide Voice Presence (so all server members see who is in this voice channel without joining)
+      if (serverPresenceChannelRef.current) {
+        try {
+          serverPresenceChannelRef.current.untrack()
+          supabase.removeChannel(serverPresenceChannelRef.current)
+        } catch (e) {}
+        serverPresenceChannelRef.current = null
+      }
+
+      if (serverId) {
+        const serverPresChannel = supabase.channel(`server-voice-presence-${serverId}`, {
+          config: {
+            presence: {
+              key: `${myId}-${channelId}`,
+            },
+          },
+        })
+
+        serverPresChannel.subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await serverPresChannel.track({
+              identity: myId,
+              channelId: channelId,
+              name: myName,
+              avatarUrl: myAvatar,
+              isSpeaking: false,
+              isMuted: isMutedRef.current,
+              isDeafened: isDeafenedRef.current,
+              isScreenSharing: false,
+            })
+          }
+        })
+
+        serverPresenceChannelRef.current = serverPresChannel
+      }
     } catch (err: any) {
       console.error('Voice connect error:', err)
       setIsConnecting(false)
@@ -765,6 +830,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         supabase.removeChannel(presenceChannelRef.current)
       } catch (e) {}
       presenceChannelRef.current = null
+    }
+
+    if (serverPresenceChannelRef.current) {
+      try {
+        serverPresenceChannelRef.current.untrack()
+        supabase.removeChannel(serverPresenceChannelRef.current)
+      } catch (e) {}
+      serverPresenceChannelRef.current = null
     }
 
     // Close all WebRTC Peer Connections
@@ -859,6 +932,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       })
     }
 
+    if (serverPresenceChannelRef.current && connectedChannel) {
+      serverPresenceChannelRef.current.track({
+        identity: myIdentityRef.current,
+        channelId: connectedChannel.id,
+        name: profile?.username || user?.user_metadata?.username || 'Shamsy',
+        avatarUrl: profile?.avatar_url || null,
+        isSpeaking: false,
+        isMuted: nextMute,
+        isDeafened: isDeafenedRef.current,
+        isScreenSharing: isScreenSharingRef.current,
+      }).catch(() => {})
+    }
+
     setParticipants((prev) =>
       prev.map((p, idx) => (idx === 0 ? { ...p, isMuted: nextMute, isSpeaking: nextMute ? false : p.isSpeaking } : p))
     )
@@ -902,6 +988,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         isDeafened: nextDeaf,
         isScreenSharing,
       })
+    }
+
+    if (serverPresenceChannelRef.current && connectedChannel) {
+      serverPresenceChannelRef.current.track({
+        identity: myIdentityRef.current,
+        channelId: connectedChannel.id,
+        name: profile?.username || user?.user_metadata?.username || 'Shamsy',
+        avatarUrl: profile?.avatar_url || null,
+        isSpeaking: false,
+        isMuted: nextDeaf ? true : isMutedRef.current,
+        isDeafened: nextDeaf,
+        isScreenSharing: isScreenSharingRef.current,
+      }).catch(() => {})
     }
 
     setParticipants((prev) =>
@@ -969,6 +1068,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             isDeafened: isDeafenedRef.current,
             isScreenSharing: false,
           })
+        }
+
+        if (serverPresenceChannelRef.current && connectedChannel) {
+          serverPresenceChannelRef.current.track({
+            identity: myIdentityRef.current,
+            channelId: connectedChannel.id,
+            name: profile?.username || user?.user_metadata?.username || 'Shamsy',
+            avatarUrl: profile?.avatar_url || null,
+            isSpeaking: localSpeaking,
+            isMuted: isMutedRef.current,
+            isDeafened: isDeafenedRef.current,
+            isScreenSharing: false,
+          }).catch(() => {})
         }
 
         setParticipants((prev) =>
@@ -1073,6 +1185,19 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             isDeafened: isDeafenedRef.current,
             isScreenSharing: true,
           })
+        }
+
+        if (serverPresenceChannelRef.current && connectedChannel) {
+          serverPresenceChannelRef.current.track({
+            identity: myIdentityRef.current,
+            channelId: connectedChannel.id,
+            name: profile?.username || user?.user_metadata?.username || 'Shamsy',
+            avatarUrl: profile?.avatar_url || null,
+            isSpeaking: localSpeaking,
+            isMuted: isMutedRef.current,
+            isDeafened: isDeafenedRef.current,
+            isScreenSharing: true,
+          }).catch(() => {})
         }
 
         setParticipants((prev) =>

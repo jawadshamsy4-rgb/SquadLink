@@ -1,16 +1,20 @@
 'use client'
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useAuth } from '@/components/providers/auth-provider'
-import { useVoice } from '@/components/providers/voice-provider'
+import { useVoice, ParticipantInfo } from '@/components/providers/voice-provider'
+import { createClient } from '@/lib/supabase/client'
 
 interface VoiceChannelProps {
   channelId: string
   channelName: string
+  serverId?: string
 }
 
-export default function VoiceChannel({ channelId, channelName }: VoiceChannelProps) {
+export default function VoiceChannel({ channelId, channelName, serverId }: VoiceChannelProps) {
   const { user, profile } = useAuth()
+  const supabase = createClient()
+  const [roomMembers, setRoomMembers] = useState<ParticipantInfo[]>([])
   const {
     connectedChannel,
     isConnected,
@@ -34,6 +38,44 @@ export default function VoiceChannel({ channelId, channelName }: VoiceChannelPro
 
   const isConnectedToThisChannel = isConnected && connectedChannel?.id === channelId
 
+  // Live presence subscription to see who is in this voice channel when viewing without connecting
+  useEffect(() => {
+    if (isConnectedToThisChannel) return
+
+    const presChannel = serverId
+      ? supabase.channel(`server-voice-presence-${serverId}`)
+      : supabase.channel(`voice-channel-${channelId}`)
+
+    presChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = presChannel.presenceState()
+        const list: ParticipantInfo[] = []
+        Object.values(state).forEach((presList: any) => {
+          presList.forEach((p: any) => {
+            if (p && p.identity && (!serverId || p.channelId === channelId)) {
+              if (!list.some((m) => m.identity === p.identity)) {
+                list.push({
+                  identity: p.identity,
+                  name: p.name,
+                  avatarUrl: p.avatarUrl || null,
+                  isSpeaking: !!p.isSpeaking,
+                  isMuted: !!p.isMuted,
+                  isDeafened: !!p.isDeafened,
+                  isScreenSharing: !!p.isScreenSharing,
+                })
+              }
+            }
+          })
+        })
+        setRoomMembers(list)
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(presChannel)
+    }
+  }, [channelId, serverId, isConnectedToThisChannel])
+
   useEffect(() => {
     if (videoContainerRef.current) {
       registerVideoContainer(videoContainerRef.current)
@@ -41,7 +83,7 @@ export default function VoiceChannel({ channelId, channelName }: VoiceChannelPro
   }, [isScreenSharing])
 
   const handleConnect = () => {
-    connectVoice(channelId, channelName)
+    connectVoice(channelId, channelName, undefined, serverId)
   }
 
   // Active Screen Shares (Both Local and Remote)
@@ -83,17 +125,24 @@ export default function VoiceChannel({ channelId, channelName }: VoiceChannelPro
             <p className="text-xs text-slate-500 dark:text-gray-400">
               {isConnectedToThisChannel
                 ? `Connected: ${participants.length} Squad Member(s) in Comms`
+                : roomMembers.length > 0
+                ? `${roomMembers.length} Squad Member(s) currently in voice chat`
                 : 'Click below to connect to voice comms'}
             </p>
           </div>
         </div>
 
-        {isConnectedToThisChannel && (
+        {isConnectedToThisChannel ? (
           <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 px-3 py-1">
             <span className="h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
             <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Voice Connected</span>
           </div>
-        )}
+        ) : roomMembers.length > 0 ? (
+          <div className="flex items-center gap-2 rounded-full bg-purple-500/10 border border-purple-500/30 px-3 py-1">
+            <span className="h-2 w-2 rounded-full bg-purple-500 animate-pulse" />
+            <span className="text-xs font-bold text-purple-600 dark:text-purple-400">Active Room</span>
+          </div>
+        ) : null}
       </div>
 
       {/* Screen Share Video Stream Containers */}
@@ -193,6 +242,79 @@ export default function VoiceChannel({ channelId, channelName }: VoiceChannelPro
               </div>
             )
           })
+        ) : roomMembers.length > 0 ? (
+          <div className="flex flex-col items-center gap-8 w-full max-w-4xl py-6 animate-in fade-in duration-200">
+            <div className="flex flex-wrap items-center justify-center gap-6 w-full">
+              {roomMembers.map((p) => {
+                const isSpeakingNow = !!p.isSpeaking
+
+                return (
+                  <div
+                    key={p.identity}
+                    className={`relative flex flex-col items-center justify-center rounded-3xl border transition-all duration-200 shadow-sm ${
+                      isSpeakingNow
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 shadow-xl shadow-emerald-500/25 scale-105'
+                        : 'border-slate-200 dark:border-white/10 bg-white dark:bg-[#121620] hover:border-slate-300 dark:hover:border-white/20'
+                    } w-44 h-48`}
+                  >
+                    {/* Live screen share indicator pill */}
+                    {p.isScreenSharing && (
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-full bg-purple-600/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-md">
+                        <span>🖥️</span>
+                        <span>LIVE</span>
+                      </div>
+                    )}
+
+                    {/* Avatar with dynamic neon green ring when speaking */}
+                    <div
+                      className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-tr from-purple-600 to-cyan-500 text-2xl font-black text-white shadow-lg transition-all ${
+                        isSpeakingNow ? 'ring-4 ring-emerald-400 animate-pulse' : ''
+                      }`}
+                    >
+                      {p.avatarUrl ? (
+                        <img src={p.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
+                      ) : (
+                        p.name.slice(0, 2).toUpperCase()
+                      )}
+                      {p.isMuted && (
+                        <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs text-white shadow-md">
+                          ✕
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-center max-w-[150px] truncate">
+                      <span className="font-bold text-slate-900 dark:text-white truncate text-sm">
+                        {p.name}
+                      </span>
+                    </div>
+
+                    <span className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-gray-400">
+                      {p.isMuted
+                        ? '🔇 Muted'
+                        : isSpeakingNow
+                        ? '🎙️ Speaking'
+                        : '🎧 In Voice'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Connect button docked underneath */}
+            <div className="flex flex-col items-center gap-2">
+              <button
+                onClick={handleConnect}
+                disabled={isConnecting}
+                className="rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-8 py-3.5 font-bold text-white shadow-lg shadow-emerald-500/25 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer text-base"
+              >
+                {isConnecting ? 'Connecting Comms...' : '🔊 Join Voice Channel'}
+              </button>
+              <span className="text-xs text-slate-500 dark:text-gray-400">
+                You will connect with your microphone to the ongoing call
+              </span>
+            </div>
+          </div>
         ) : (
           <div className="text-center py-10">
             <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-tr from-purple-500/20 to-cyan-500/20 text-4xl shadow-inner">
@@ -200,7 +322,7 @@ export default function VoiceChannel({ channelId, channelName }: VoiceChannelPro
             </div>
             <h3 className="mt-4 text-xl font-black text-slate-900 dark:text-white">Join Voice Channel</h3>
             <p className="mt-1 text-sm text-slate-500 dark:text-gray-400 max-w-sm mx-auto">
-              Connect your microphone to chat with your squad and share gameplay in real time.
+              No one is currently in this channel. Connect your microphone to chat with your squad and share gameplay in real time.
             </p>
             <button
               onClick={handleConnect}

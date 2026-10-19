@@ -256,7 +256,11 @@ export default function MainViewport({
           )}
 
           {channel.type === 'voice' && (
-            <VoiceChannel channelId={channel.id} channelName={channel.name} />
+            <VoiceChannel
+              channelId={channel.id}
+              channelName={channel.name}
+              serverId={channel.server_id || serverId || undefined}
+            />
           )}
 
           {channel.type === 'map' && (

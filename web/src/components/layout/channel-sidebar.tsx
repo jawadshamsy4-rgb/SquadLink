@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/providers/auth-provider'
-import { useVoice } from '@/components/providers/voice-provider'
+import { useVoice, type ParticipantInfo } from '@/components/providers/voice-provider'
 import ServerSettingsModal from '@/components/modals/server-settings-modal'
 
 type ChannelType = 'text' | 'voice' | 'map'
@@ -83,6 +83,7 @@ export default function ChannelSidebar({
     toggleDeafen,
   } = useVoice()
   const supabase = createClient()
+  const [serverVoiceMembers, setServerVoiceMembers] = useState<Record<string, ParticipantInfo[]>>({})
 
   // Close channel menus when clicking outside
   useEffect(() => {
@@ -167,10 +168,44 @@ export default function ChannelSidebar({
       )
       .subscribe()
 
+    // Server-wide Voice Presence (Track members in all voice channels even without joining)
+    const voicePresChannel = supabase.channel(`server-voice-presence-${serverId}`)
+
+    voicePresChannel
+      .on('presence', { event: 'sync' }, () => {
+        const state = voicePresChannel.presenceState()
+        const byChannel: Record<string, ParticipantInfo[]> = {}
+
+        Object.values(state).forEach((presList: any) => {
+          presList.forEach((p: any) => {
+            if (p && p.channelId && p.identity) {
+              if (!byChannel[p.channelId]) {
+                byChannel[p.channelId] = []
+              }
+              if (!byChannel[p.channelId].some((m) => m.identity === p.identity)) {
+                byChannel[p.channelId].push({
+                  identity: p.identity,
+                  name: p.name,
+                  avatarUrl: p.avatarUrl || null,
+                  isSpeaking: !!p.isSpeaking,
+                  isMuted: !!p.isMuted,
+                  isDeafened: !!p.isDeafened,
+                  isScreenSharing: !!p.isScreenSharing,
+                })
+              }
+            }
+          })
+        })
+
+        setServerVoiceMembers(byChannel)
+      })
+      .subscribe()
+
     return () => {
       supabase.removeChannel(channel)
+      supabase.removeChannel(voicePresChannel)
     }
-  }, [serverId])
+  }, [serverId, user])
 
   const handleCreateChannel = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -452,6 +487,8 @@ export default function ChannelSidebar({
               const isSelected = selectedChannelId === ch.id
               const isConnectedToThis = isConnected && connectedChannel?.id === ch.id
               const isMenuOpen = openMenuChannelId === ch.id
+              const channelParticipants = isConnectedToThis ? participants : (serverVoiceMembers[ch.id] || [])
+              const hasMembers = channelParticipants.length > 0
 
               return (
                 <div key={ch.id} className="space-y-0.5">
@@ -460,7 +497,7 @@ export default function ChannelSidebar({
                     onClick={() => {
                       onSelectChannel(ch)
                       if (!isConnectedToThis) {
-                        connectVoice(ch.id, ch.name, server?.name)
+                        connectVoice(ch.id, ch.name, server?.name, serverId || undefined)
                       }
                     }}
                     className={`group relative flex items-center justify-between rounded-xl px-2.5 py-1.5 text-sm transition-all cursor-pointer ${
@@ -476,6 +513,8 @@ export default function ChannelSidebar({
                         className={`text-base leading-none ${
                           isConnectedToThis
                             ? 'text-emerald-500 dark:text-emerald-400'
+                            : hasMembers
+                            ? 'text-emerald-600 dark:text-emerald-400'
                             : 'text-slate-400 dark:text-gray-500'
                         }`}
                       >
@@ -485,12 +524,20 @@ export default function ChannelSidebar({
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      {/* Connection Call Timer (e.g. 2:00:41 in green) */}
-                      {isConnectedToThis && (
+                      {/* Connection Call Timer (if connected) or Participant Count Badge (if not connected) */}
+                      {isConnectedToThis ? (
                         <span className="text-[11px] font-mono font-bold text-emerald-600 dark:text-emerald-400 tracking-tight">
                           {callDuration}
                         </span>
-                      )}
+                      ) : hasMembers ? (
+                        <span
+                          title={`${channelParticipants.length} member${channelParticipants.length > 1 ? 's' : ''} in voice`}
+                          className="flex items-center gap-1 rounded-full bg-slate-200/80 dark:bg-white/10 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-gray-300"
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          {channelParticipants.length}
+                        </span>
+                      ) : null}
 
                       {/* 3-Dot Options Button */}
                       <div className="relative">
@@ -529,61 +576,66 @@ export default function ChannelSidebar({
                   </div>
 
                   {/* Connected Voice Channel Sub-header & Joined Users (Exact Discord Layout) */}
-                  {isConnectedToThis && (
+                  {(isConnectedToThis || hasMembers) && (
                     <div className="pl-3 pr-1 py-0.5 space-y-1">
-                      {/* Channel Status line with pencil icon */}
-                      <div className="pl-4 text-[11px] text-slate-500 dark:text-gray-400 flex items-center gap-1.5 group/status">
-                        {isEditingStatus ? (
-                          <input
-                            type="text"
-                            value={statusInput}
-                            onChange={(e) => setStatusInput(e.target.value)}
-                            onBlur={() => {
-                              if (statusInput.trim()) setChannelStatus(statusInput.trim())
-                              setIsEditingStatus(false)
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
+                      {/* Channel Status line with pencil icon (only when connected) */}
+                      {isConnectedToThis && (
+                        <div className="pl-4 text-[11px] text-slate-500 dark:text-gray-400 flex items-center gap-1.5 group/status">
+                          {isEditingStatus ? (
+                            <input
+                              type="text"
+                              value={statusInput}
+                              onChange={(e) => setStatusInput(e.target.value)}
+                              onBlur={() => {
                                 if (statusInput.trim()) setChannelStatus(statusInput.trim())
                                 setIsEditingStatus(false)
-                              } else if (e.key === 'Escape') {
-                                setIsEditingStatus(false)
-                              }
-                            }}
-                            autoFocus
-                            placeholder="Set a channel status"
-                            className="w-full bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-[11px] rounded px-1.5 py-0.5 border border-slate-300 dark:border-white/10 outline-none"
-                          />
-                        ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setStatusInput(channelStatus === 'Set a channel status' ? '' : channelStatus)
-                              setIsEditingStatus(true)
-                            }}
-                            className="flex items-center gap-1 hover:text-slate-800 dark:hover:text-gray-200 cursor-pointer transition-colors truncate"
-                          >
-                            <span className="truncate">{channelStatus}</span>
-                            <span className="opacity-0 group-hover/status:opacity-100 transition-opacity text-[10px]">
-                              ✏️
-                            </span>
-                          </button>
-                        )}
-                      </div>
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  if (statusInput.trim()) setChannelStatus(statusInput.trim())
+                                  setIsEditingStatus(false)
+                                } else if (e.key === 'Escape') {
+                                  setIsEditingStatus(false)
+                                }
+                              }}
+                              autoFocus
+                              placeholder="Set a channel status"
+                              className="w-full bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-[11px] rounded px-1.5 py-0.5 border border-slate-300 dark:border-white/10 outline-none"
+                            />
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setStatusInput(channelStatus === 'Set a channel status' ? '' : channelStatus)
+                                setIsEditingStatus(true)
+                              }}
+                              className="flex items-center gap-1 hover:text-slate-800 dark:hover:text-gray-200 cursor-pointer transition-colors truncate"
+                            >
+                              <span className="truncate">{channelStatus}</span>
+                              <span className="opacity-0 group-hover/status:opacity-100 transition-opacity text-[10px]">
+                                ✏️
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {/* Joined Users List (Indented like Discord) */}
                       <div className="space-y-0.5">
-                        {participants.map((p, idx) => {
-                          const isLocal = idx === 0 || p.identity === user?.id
-                          const isSpeakingNow = isLocal ? localSpeaking : p.isSpeaking
-                          const isMutedNow = isLocal ? isMuted : p.isMuted
-                          const isDeafenedNow = isLocal ? isDeafened : p.isDeafened
-                          const isSharingNow = isLocal ? isScreenSharing : p.isScreenSharing
+                        {channelParticipants.map((p, idx) => {
+                          const isLocal = isConnectedToThis && (idx === 0 || p.identity === user?.id)
+                          const isSpeakingNow = isLocal ? localSpeaking : !!p.isSpeaking
+                          const isMutedNow = isLocal ? isMuted : !!p.isMuted
+                          const isDeafenedNow = isLocal ? isDeafened : !!p.isDeafened
+                          const isSharingNow = isLocal ? isScreenSharing : !!p.isScreenSharing
 
                           return (
                             <div
                               key={p.identity}
-                              onClick={() => onSelectChannel(ch)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                onSelectChannel(ch)
+                              }}
                               className="group flex items-center justify-between rounded-xl px-2 py-1 text-xs transition-colors hover:bg-slate-200/60 dark:hover:bg-white/5 cursor-pointer"
                             >
                               {/* Left: Avatar with glowing green ring + Username + Tag */}
@@ -609,7 +661,7 @@ export default function ChannelSidebar({
                                 </div>
 
                                 <span className="truncate font-semibold text-slate-800 dark:text-gray-200 text-xs">
-                                  {p.name}
+                                  {p.name} {isLocal && '(You)'}
                                 </span>
                               </div>
 
