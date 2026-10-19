@@ -40,7 +40,42 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setSoundEffectsEnabled,
   } = useVoice()
   const [activeTab, setActiveTab] = useState<'voice' | 'keybinds' | 'profile' | 'radar' | 'appearance'>('voice')
+  const [mobileView, setMobileView] = useState<'menu' | 'detail'>('menu')
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+
+  const tabs = [
+    {
+      id: 'voice' as const,
+      label: 'Voice & Audio',
+      icon: '🎙️',
+      description: 'Microphone, output audio & voice processing',
+    },
+    {
+      id: 'keybinds' as const,
+      label: 'Keybinds & Sound FX',
+      icon: '⌨️',
+      description: 'Tactical hotkeys & sound effects',
+    },
+    {
+      id: 'profile' as const,
+      label: 'My Profile',
+      icon: '👤',
+      description: 'Avatar, username & identity',
+    },
+    {
+      id: 'radar' as const,
+      label: 'Squad Radar (GPS)',
+      icon: '🌐',
+      description: 'Live squad tracking & map privacy',
+    },
+    {
+      id: 'appearance' as const,
+      label: 'Appearance',
+      icon: '🎨',
+      description: 'Theme & visual interface style',
+    },
+  ]
+
   const [recordingAction, setRecordingAction] = useState<keyof KeybindConfig | null>(null)
   const [username, setUsername] = useState(profile?.username || '')
   const [isSharingLocation, setIsSharingLocation] = useState(true)
@@ -69,6 +104,31 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (isOpen) {
+      setMobileView('menu')
+    }
+  }, [isOpen])
+
+  // Handle Escape key to return to mobile menu or close modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showLogoutConfirm) {
+          setShowLogoutConfirm(false)
+        } else if (mobileView === 'detail' && typeof window !== 'undefined' && window.innerWidth < 768) {
+          setMobileView('menu')
+        } else {
+          onClose()
+        }
+      }
+    }
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown)
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, showLogoutConfirm, mobileView, onClose])
 
   useEffect(() => {
     if (profile?.username) {
@@ -436,98 +496,84 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   if (!mounted || !isOpen) return null
 
   const modalContent = (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 md:p-8 animate-in fade-in duration-200 select-none">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-0 md:p-6 lg:p-8 animate-in fade-in duration-200 select-none">
       {/* Persistent Audio Tag for Hardware Loopback without GC or throttling */}
       <audio ref={micTestAudioElementRef} style={{ display: 'none' }} playsInline autoPlay />
 
       {/* Expanded Modal Window */}
-      <div className="relative flex flex-col md:flex-row w-full max-w-5xl h-[85vh] rounded-3xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121620] shadow-2xl overflow-hidden transition-colors duration-200">
-        {/* Left Settings Sidebar */}
-        <div className="w-full md:w-64 bg-slate-100 dark:bg-[#0d1017] p-6 border-b md:border-b-0 md:border-r border-slate-200 dark:border-white/5 flex flex-col justify-between shrink-0 transition-colors duration-200">
+      <div className="relative flex flex-col md:flex-row w-full max-w-5xl h-full md:h-[90vh] md:rounded-3xl border-0 md:border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121620] shadow-2xl overflow-hidden transition-colors duration-200">
+        {/* Left Settings Sidebar (Desktop) / Mobile Category Selector (Mobile) */}
+        <div
+          className={`${
+            mobileView === 'detail' ? 'hidden md:flex' : 'flex'
+          } w-full md:w-64 lg:w-72 bg-slate-100 dark:bg-[#090c12] p-5 md:p-6 border-b md:border-b-0 md:border-r border-slate-200 dark:border-white/5 flex-col justify-between shrink-0 h-full overflow-y-auto transition-colors duration-200`}
+        >
           <div className="space-y-6">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl overflow-hidden shadow-md shadow-purple-500/20 border border-purple-500/20 shrink-0">
-                <img src="/logo.png" alt="SquadLink" className="h-full w-full object-cover" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-10 w-10 md:h-11 md:w-11 rounded-2xl overflow-hidden shadow-md shadow-purple-500/20 border border-purple-500/20 shrink-0">
+                  <img src="/logo.png" alt="SquadLink" className="h-full w-full object-cover" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                    SquadLink
+                  </span>
+                  <h2 className="text-base md:text-lg font-black text-slate-900 dark:text-white leading-tight truncate">
+                    Settings
+                  </h2>
+                </div>
               </div>
-              <div>
-                <span className="text-[11px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                  SquadLink
-                </span>
-                <h2 className="text-lg font-black text-slate-900 dark:text-white leading-tight">Settings</h2>
-              </div>
+
+              {/* Close Button on Mobile Category List */}
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex md:hidden h-8 w-8 items-center justify-center rounded-xl bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white cursor-pointer text-sm font-bold"
+                title="Close"
+              >
+                ✕
+              </button>
             </div>
 
             {/* Tab navigation */}
             <nav className="space-y-1.5">
-              <button
-                type="button"
-                onClick={() => setActiveTab('voice')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition-all text-left cursor-pointer ${
-                  activeTab === 'voice'
-                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200/60 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>🎙️</span>
-                <span>Voice & Audio</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('keybinds')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition-all text-left cursor-pointer ${
-                  activeTab === 'keybinds'
-                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200/60 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>⌨️</span>
-                <span>Keybinds & Sound FX</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('profile')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition-all text-left cursor-pointer ${
-                  activeTab === 'profile'
-                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200/60 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>👤</span>
-                <span>My Profile</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('radar')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition-all text-left cursor-pointer ${
-                  activeTab === 'radar'
-                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200/60 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>🌐</span>
-                <span>Squad Radar (GPS)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('appearance')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-bold transition-all text-left cursor-pointer ${
-                  activeTab === 'appearance'
-                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-                    : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200/60 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>🎨</span>
-                <span>Appearance</span>
-              </button>
+              <span className="hidden md:block text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-gray-500 px-3 pb-1">
+                Categories
+              </span>
+              {tabs.map((tab) => {
+                const isSelected = activeTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(tab.id)
+                      setMobileView('detail')
+                    }}
+                    className={`flex w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-xs font-bold transition-all cursor-pointer text-left ${
+                      isSelected
+                        ? 'bg-purple-600 text-white shadow-md shadow-purple-500/25'
+                        : 'text-slate-600 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-base shrink-0">{tab.icon}</span>
+                      <div className="min-w-0">
+                        <span className="block truncate">{tab.label}</span>
+                        <span className="block md:hidden text-[10px] font-normal opacity-70 truncate">
+                          {tab.description}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="md:hidden text-xs opacity-60">›</span>
+                  </button>
+                )
+              })}
             </nav>
           </div>
 
-          {/* Logout at bottom of sidebar */}
-          <div className="pt-6 border-t border-slate-200 dark:border-white/5">
+          {/* Bottom Controls */}
+          <div className="pt-6 border-t border-slate-200 dark:border-white/5 space-y-2">
             <button
               type="button"
               onClick={() => setShowLogoutConfirm(true)}
@@ -536,15 +582,75 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <span>🚪</span>
               <span>Log Out</span>
             </button>
+
+            {/* Desktop Esc / Close Button */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="hidden md:block w-full rounded-2xl border border-slate-300 dark:border-white/10 bg-slate-200/80 dark:bg-white/5 py-2.5 text-xs font-bold text-slate-700 dark:text-gray-300 hover:bg-slate-300 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              Esc or Close
+            </button>
           </div>
         </div>
 
-        {/* Right Content Viewport */}
-        <div className="flex-1 flex flex-col p-6 md:p-10 overflow-y-auto scrollbar-hide bg-white dark:bg-[#121620] transition-colors duration-200">
-          {/* Header */}
-          <div className="flex items-center justify-between pb-6 border-b border-slate-200 dark:border-white/5">
-            <div>
-              <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+        {/* Right Content Viewport (Desktop) / Detail View (Mobile) */}
+        <div
+          className={`${
+            mobileView === 'menu' ? 'hidden md:flex' : 'flex'
+          } flex-1 flex-col min-h-0 bg-white dark:bg-[#121620] overflow-y-auto relative h-full`}
+        >
+          {/* Mobile Back Header */}
+          <div className="flex md:hidden items-center justify-between p-4 border-b border-slate-200 dark:border-white/5 bg-slate-100/90 dark:bg-[#090c12]/90 backdrop-blur-md sticky top-0 z-20">
+            <button
+              type="button"
+              onClick={() => setMobileView('menu')}
+              className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer"
+            >
+              <span className="text-sm font-black">‹</span>
+              <span>Back to Settings</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-8 w-8 flex items-center justify-center rounded-xl bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white cursor-pointer text-sm font-bold"
+              title="Close"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="flex-1 flex flex-col p-6 md:p-10">
+            {/* Desktop Header */}
+            <div className="hidden md:flex items-center justify-between pb-6 border-b border-slate-200 dark:border-white/5">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white">
+                  {activeTab === 'voice' && 'Voice & Audio Hardware'}
+                  {activeTab === 'keybinds' && 'Keybinds & Sound Effects'}
+                  {activeTab === 'profile' && 'Profile & Account'}
+                  {activeTab === 'radar' && 'Squad Radar Privacy'}
+                  {activeTab === 'appearance' && 'Theme & Visuals'}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
+                  {activeTab === 'keybinds'
+                    ? 'Configure custom keyboard shortcuts and audio cues for voice comms.'
+                    : 'Customize your audio hardware, controls, and squad preferences.'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                title="Close Settings"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Mobile Title */}
+            <div className="block md:hidden pb-4 mb-4 border-b border-slate-200 dark:border-white/5">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">
                 {activeTab === 'voice' && 'Voice & Audio Hardware'}
                 {activeTab === 'keybinds' && 'Keybinds & Sound Effects'}
                 {activeTab === 'profile' && 'Profile & Account'}
@@ -557,15 +663,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   : 'Customize your audio hardware, controls, and squad preferences.'}
               </p>
             </div>
-
-            <button
-              onClick={onClose}
-              className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
-              title="Close Settings"
-            >
-              ✕
-            </button>
-          </div>
 
           {message && (
             <div
@@ -1103,6 +1200,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
 
