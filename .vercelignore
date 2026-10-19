@@ -1,0 +1,10 @@
+# Ignore desktop, packaging tools and binaries for Vercel web deployment
+desktop/
+package/
+*.jar
+*.tgz
+*.zip
+*.exe
+*.apk
+.git/
+node_modules/
