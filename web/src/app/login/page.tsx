@@ -18,8 +18,36 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [checkingExistingSession, setCheckingExistingSession] = useState(true)
   const [resendCountdown, setResendCountdown] = useState(0)
   const supabase = createClient()
+
+  // Auto-redirect if already authenticated (e.g. from persistent session / backup)
+  useEffect(() => {
+    let isMounted = true
+    const checkSession = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+
+        if (session?.user && isMounted) {
+          const params = new URLSearchParams(window.location.search)
+          const next = params.get('next') || '/app'
+          window.location.replace(next)
+          return
+        }
+      } catch (err) {
+        console.warn('Session verification error:', err)
+      } finally {
+        if (isMounted) setCheckingExistingSession(false)
+      }
+    }
+    checkSession()
+    return () => {
+      isMounted = false
+    }
+  }, [supabase])
 
   // Handle URL query parameters without SSR bailout
   useEffect(() => {
@@ -61,7 +89,9 @@ export default function LoginPage() {
       setError(error.message)
       setLoading(false)
     } else {
-      window.location.href = '/app'
+      const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+      const next = params?.get('next') || '/app'
+      window.location.href = next
     }
   }
 
@@ -182,22 +212,28 @@ export default function LoginPage() {
 
         {/* Card Container */}
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl transition-all duration-300">
-          
-          {/* Notifications */}
-          {error && (
-            <div className="mb-5 p-3.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 text-sm text-center font-medium animate-in fade-in duration-200">
-              {error}
+          {checkingExistingSession ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-4">
+              <div className="h-10 w-10 animate-spin rounded-full border-4 border-purple-500 border-t-transparent" />
+              <p className="text-sm font-bold text-gray-300">Verifying session...</p>
             </div>
-          )}
+          ) : (
+            <>
+              {/* Notifications */}
+              {error && (
+                <div className="mb-5 p-3.5 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 text-sm text-center font-medium animate-in fade-in duration-200">
+                  {error}
+                </div>
+              )}
 
-          {message && (
-            <div className="mb-5 p-3.5 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-sm text-center font-medium leading-relaxed animate-in fade-in duration-200">
-              {message}
-            </div>
-          )}
+              {message && (
+                <div className="mb-5 p-3.5 rounded-2xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-sm text-center font-medium leading-relaxed animate-in fade-in duration-200">
+                  {message}
+                </div>
+              )}
 
-          {/* 1. LOGIN MODE */}
-          {mode === 'login' && (
+              {/* 1. LOGIN MODE */}
+              {mode === 'login' && (
             <div>
               <h2 className="text-2xl font-bold text-white mb-6 text-center">Welcome back</h2>
 
@@ -527,6 +563,8 @@ export default function LoginPage() {
             </div>
           )}
 
+            </>
+          )}
         </div>
       </div>
     </div>

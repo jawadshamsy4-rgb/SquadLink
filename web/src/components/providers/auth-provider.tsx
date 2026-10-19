@@ -133,10 +133,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('squadlink_auth_backup_v1')
+        sessionStorage.clear()
+      }
       await supabase.auth.signOut()
     } catch (err) {
       console.warn('Sign out error:', err)
     } finally {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('squadlink_auth_backup_v1')
+        sessionStorage.clear()
+      }
       setUser(null)
       setProfile(null)
       window.location.href = '/login'

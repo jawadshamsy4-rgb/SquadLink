@@ -66,10 +66,14 @@ export async function updateSession(request: NextRequest) {
   // Protect /app and /profile routes
   const isProtectedPath = pathname.startsWith('/app') || pathname.startsWith('/profile')
   if (isProtectedPath && !user) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('next', pathname)
-    return NextResponse.redirect(url)
+    // For native mobile APK and desktop, allow client-side hydration to recover session from localStorage backup
+    // Client-side AppPage automatically redirects to /login if genuinely unauthenticated
+    if (!isNativeApp) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      url.searchParams.set('next', pathname)
+      return NextResponse.redirect(url)
+    }
   }
 
   // If already authenticated and accessing login or signup, redirect to /app
