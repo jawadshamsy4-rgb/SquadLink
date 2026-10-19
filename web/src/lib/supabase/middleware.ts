@@ -41,6 +41,28 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname
 
+  // Detect native apps (Electron, Android WebView, or query param / cookie)
+  const userAgent = request.headers.get('user-agent') || ''
+  const hasAppParam = request.nextUrl.searchParams.get('platform') === 'app'
+  const hasAppCookie = request.cookies.get('squadlink_platform')?.value === 'app'
+  const isNativeApp =
+    userAgent.includes('Electron') ||
+    userAgent.includes('SquadLink') ||
+    userAgent.includes('wv') ||
+    hasAppParam ||
+    hasAppCookie
+
+  // If in native app and on landing page '/', send directly to login or app
+  if (pathname === '/' && isNativeApp) {
+    const url = request.nextUrl.clone()
+    url.pathname = user ? '/app' : '/login'
+    const redirectResponse = NextResponse.redirect(url)
+    if (hasAppParam && !hasAppCookie) {
+      redirectResponse.cookies.set('squadlink_platform', 'app', { maxAge: 31536000, path: '/' })
+    }
+    return redirectResponse
+  }
+
   // Protect /app and /profile routes
   const isProtectedPath = pathname.startsWith('/app') || pathname.startsWith('/profile')
   if (isProtectedPath && !user) {
@@ -56,6 +78,10 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/app'
     return NextResponse.redirect(url)
+  }
+
+  if (hasAppParam && !hasAppCookie) {
+    response.cookies.set('squadlink_platform', 'app', { maxAge: 31536000, path: '/' })
   }
 
   return response

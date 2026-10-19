@@ -1,12 +1,39 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/providers/auth-provider'
 
 export default function LandingPage() {
-  const { user, profile } = useAuth()
+  const { user, profile, loading } = useAuth()
+  const router = useRouter()
   const [downloadModal, setDownloadModal] = useState<'windows' | 'android' | null>(null)
+  const [isAppEnvironment, setIsAppEnvironment] = useState<boolean>(false)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const ua = navigator.userAgent || ''
+      const isApp =
+        ua.includes('Electron') ||
+        ua.includes('SquadLink') ||
+        ua.includes('wv') ||
+        window.location.search.includes('platform=app') ||
+        localStorage.getItem('squadlink_is_app') === 'true'
+
+      if (isApp) {
+        setIsAppEnvironment(true)
+        localStorage.setItem('squadlink_is_app', 'true')
+        if (!loading) {
+          if (user) {
+            router.replace('/app')
+          } else {
+            router.replace('/login')
+          }
+        }
+      }
+    }
+  }, [user, loading, router])
 
   const handleDownloadWindows = () => {
     setDownloadModal('windows')
@@ -14,6 +41,15 @@ export default function LandingPage() {
 
   const handleDownloadAndroid = () => {
     setDownloadModal('android')
+  }
+
+  // If inside desktop or android native app, don't show the marketing homepage
+  if (isAppEnvironment) {
+    return (
+      <div className="min-h-screen bg-[#0c1024] flex items-center justify-center">
+        <div className="w-9 h-9 rounded-full border-3 border-purple-500/30 border-t-cyan-400 animate-spin" />
+      </div>
+    )
   }
 
   return (

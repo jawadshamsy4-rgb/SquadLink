@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setUser(null)
       setProfile(null)
-      window.location.href = '/'
+      window.location.href = '/login'
     }
   }
 

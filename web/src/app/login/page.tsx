@@ -177,9 +177,9 @@ export default function LoginPage() {
       <div className="relative w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center justify-center w-20 h-20 rounded-3xl overflow-hidden mb-4 shadow-2xl shadow-purple-500/30 border border-white/20 hover:scale-105 transition-transform">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl overflow-hidden mb-4 shadow-2xl shadow-purple-500/30 border border-white/20 select-none">
             <img src="/logo.png" alt="SquadLink" className="w-full h-full object-cover" />
-          </Link>
+          </div>
           <h1 className="text-4xl font-black bg-gradient-to-r from-purple-400 via-cyan-400 to-pink-400 bg-clip-text text-transparent">
             SquadLink
           </h1>

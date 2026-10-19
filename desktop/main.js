@@ -27,10 +27,26 @@ function createWindow() {
     Menu.setApplicationMenu(null)
   }
 
+  // Append SquadLink Desktop identifier to User Agent
+  const defaultUA = mainWindow.webContents.getUserAgent()
+  mainWindow.webContents.setUserAgent(`${defaultUA} SquadLink-Desktop/1.0.0`)
+
+  // Prevent desktop app from ever navigating to the marketing website root
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    try {
+      const parsed = new URL(url)
+      if (parsed.pathname === '/' || parsed.pathname === '') {
+        event.preventDefault()
+        const targetUrl = isDev ? 'http://localhost:3000/login' : 'https://squad-link-five.vercel.app/login'
+        mainWindow.loadURL(targetUrl)
+      }
+    } catch (e) {}
+  })
+
   // Load the web app
   if (isDev) {
     // In dev mode, connect to the Next.js dev server
-    mainWindow.loadURL('http://localhost:3000')
+    mainWindow.loadURL('http://localhost:3000/app')
     mainWindow.webContents.openDevTools()
   } else {
     // In production, load from the live deployed SquadLink app URL
