@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, KeyboardAvo
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { supabase } from '../lib/supabase'
-import { startLocationTracking } from '../lib/location'
+import { startLocationTracking, updateLocationNow } from '../lib/location'
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('')
@@ -16,7 +16,7 @@ export default function LoginScreen() {
     // Check if already logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        startLocationTracking()
+        updateLocationNow()
         router.replace('/home')
       }
     })
@@ -36,7 +36,7 @@ export default function LoginScreen() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
-        await startLocationTracking()
+        await updateLocationNow()
         router.replace('/home')
       }
     } catch (error: any) {

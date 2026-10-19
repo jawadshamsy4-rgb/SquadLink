@@ -31,8 +31,10 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
-        "RECORD_AUDIO",
-        "FOREGROUND_SERVICE"
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "WAKE_LOCK",
+        "RECORD_AUDIO"
       ]
     },
     "plugins": [
@@ -41,7 +43,10 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "SquadLink uses your location to show your squad where you are on the map.",
-          "isAndroidBackgroundLocationEnabled": true
+          "locationAlwaysPermission": "SquadLink updates your location periodically in the background for your squad.",
+          "locationWhenInUsePermission": "SquadLink uses your location to show your squad where you are on the map.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-secure-store"
