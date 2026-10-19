@@ -82,8 +82,13 @@ export default function SquadMap({ serverId }: SquadMapProps) {
   const [pings, setPings] = useState<TacticalPing[]>([])
   const [loading, setLoading] = useState(true)
   const [isSharingLocation, setIsSharingLocation] = useState(true)
+  const isSharingLocationRef = useRef(true)
+  const hasLoadedInitialSharingRef = useRef(false)
   const [gpsStatus, setGpsStatus] = useState<string>('')
   const [isWatchingGps, setIsWatchingGps] = useState(false)
+  const isWatchingGpsRef = useRef(false)
+  const lastGpsToggleTimeRef = useRef(0)
+  const lastSharingToggleTimeRef = useRef(0)
   const [pingMode, setPingMode] = useState<keyof typeof PING_CONFIG | null>(null)
   const [showRoster, setShowRoster] = useState(false)
 
@@ -117,7 +122,7 @@ export default function SquadMap({ serverId }: SquadMapProps) {
   const fetchLocations = useCallback(async () => {
     if (!serverId) return
     try {
-      if (currentUserId) {
+      if (currentUserId && !hasLoadedInitialSharingRef.current) {
         const { data: myLoc } = await supabase
           .from('locations')
           .select('is_sharing_location')
@@ -126,7 +131,10 @@ export default function SquadMap({ serverId }: SquadMapProps) {
           .maybeSingle()
 
         if (myLoc !== null && myLoc !== undefined) {
-          setIsSharingLocation(myLoc.is_sharing_location ?? true)
+          const initialSharing = myLoc.is_sharing_location ?? true
+          setIsSharingLocation(initialSharing)
+          isSharingLocationRef.current = initialSharing
+          hasLoadedInitialSharingRef.current = true
         }
       }
 
@@ -535,13 +543,14 @@ export default function SquadMap({ serverId }: SquadMapProps) {
 
   // 8. Update Location to Supabase
   const pushLocationToSupabase = async (lat: number, lng: number) => {
+    if (!currentUserId || !serverId) return
     await supabase.from('locations').upsert(
       {
         user_id: currentUserId,
         server_id: serverId,
         latitude: lat,
         longitude: lng,
-        is_sharing_location: isSharingLocation,
+        is_sharing_location: isSharingLocationRef.current,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'user_id,server_id' }
@@ -562,7 +571,7 @@ export default function SquadMap({ serverId }: SquadMapProps) {
           latitude: lat,
           longitude: lng,
           updated_at: new Date().toISOString(),
-          is_sharing_location: true,
+          is_sharing_location: isSharingLocationRef.current,
         }
         setMembers((prev) => {
           const others = prev.filter((m) => m.id !== currentUserId)
@@ -628,8 +637,16 @@ export default function SquadMap({ serverId }: SquadMapProps) {
   }
 
   // 10. Continuous Live Watch GPS Toggle
-  const toggleLiveWatchGps = () => {
-    if (isWatchingGps) {
+  const toggleLiveWatchGps = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    const now = Date.now()
+    if (now - lastGpsToggleTimeRef.current < 400) return
+    lastGpsToggleTimeRef.current = now
+
+    if (isWatchingGpsRef.current) {
       if (watchIdRef.current !== null) {
         if (typeof window !== 'undefined' && 'geolocation' in navigator) {
           navigator.geolocation.clearWatch(watchIdRef.current)
@@ -637,17 +654,24 @@ export default function SquadMap({ serverId }: SquadMapProps) {
         clearInterval(watchIdRef.current)
         watchIdRef.current = null
       }
+      isWatchingGpsRef.current = false
       setIsWatchingGps(false)
       setGpsStatus('Live tracking paused')
       setTimeout(() => setGpsStatus(''), 2500)
     } else {
+      isWatchingGpsRef.current = true
+      setIsWatchingGps(true)
+
       if (typeof window !== 'undefined') {
         const desktop = (window as any).squadlinkDesktop
         if (desktop && typeof desktop.getExactLocation === 'function') {
-          setIsWatchingGps(true)
-          setGpsStatus('📡 Live GPS Tracking Active (Windows)')
+          setGpsStatus('📡 Live GPS Active (Windows)')
           const timer = setInterval(async () => {
             try {
+              if (!isWatchingGpsRef.current) {
+                clearInterval(timer)
+                return
+              }
               const loc = await desktop.getExactLocation()
               if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number') {
                 await pushLocationToSupabase(loc.lat, loc.lng)
@@ -660,30 +684,45 @@ export default function SquadMap({ serverId }: SquadMapProps) {
         }
 
         if ('geolocation' in navigator) {
-          setIsWatchingGps(true)
-          setGpsStatus('📡 Live GPS Tracking Active')
+          setGpsStatus('📡 Live GPS Active')
 
           const id = navigator.geolocation.watchPosition(
             async (pos) => {
+              if (!isWatchingGpsRef.current) return
               const lat = pos.coords.latitude
               const lng = pos.coords.longitude
               await pushLocationToSupabase(lat, lng)
-              fetchLocations()
+
+              // Instantly update own pin on map
+              if (currentUserId) {
+                setMembers((prev) => {
+                  const updatedMe: MemberLocation = {
+                    id: currentUserId,
+                    username: currentUserName,
+                    avatar_url: user?.user_metadata?.avatar_url || null,
+                    latitude: lat,
+                    longitude: lng,
+                    updated_at: new Date().toISOString(),
+                    is_sharing_location: isSharingLocationRef.current,
+                  }
+                  return [...prev.filter((m) => m.id !== currentUserId), updatedMe]
+                })
+              }
             },
             (err) => {
               console.warn('Watch GPS warning:', err.message)
-              // If network service error in Chromium, silently fallback to IP location
               fetchIpLocation().then(async (ipLoc) => {
-                if (ipLoc) {
+                if (ipLoc && isWatchingGpsRef.current) {
                   await pushLocationToSupabase(ipLoc.lat, ipLoc.lng)
-                  fetchLocations()
                 }
               })
             },
-            { enableHighAccuracy: true, maximumAge: 5000 }
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
           )
           watchIdRef.current = id
         } else {
+          isWatchingGpsRef.current = false
+          setIsWatchingGps(false)
           setGpsStatus('Geolocation not supported')
           setTimeout(() => setGpsStatus(''), 3000)
         }
@@ -762,19 +801,33 @@ export default function SquadMap({ serverId }: SquadMapProps) {
   }
 
   // 14. Toggle location sharing
-  const toggleLocationSharing = async () => {
-    const nextState = !isSharingLocation
+  const toggleLocationSharing = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    const now = Date.now()
+    if (now - lastSharingToggleTimeRef.current < 400) return
+    lastSharingToggleTimeRef.current = now
+
+    const nextState = !isSharingLocationRef.current
+    isSharingLocationRef.current = nextState
     setIsSharingLocation(nextState)
 
-    await supabase.from('locations').upsert(
-      {
-        user_id: currentUserId,
-        server_id: serverId,
-        is_sharing_location: nextState,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,server_id' }
-    )
+    if (currentUserId && serverId) {
+      const me = members.find((m) => m.id === currentUserId)
+      await supabase.from('locations').upsert(
+        {
+          user_id: currentUserId,
+          server_id: serverId,
+          latitude: me?.latitude || 0,
+          longitude: me?.longitude || 0,
+          is_sharing_location: nextState,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,server_id' }
+      )
+    }
 
     fetchLocations()
   }
@@ -873,6 +926,7 @@ export default function SquadMap({ serverId }: SquadMapProps) {
               return (
                 <button
                   key={type}
+                  type="button"
                   onClick={() => setPingMode(isActive ? null : type)}
                   title={`Drop ${cfg.label} (Click map)`}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -888,6 +942,7 @@ export default function SquadMap({ serverId }: SquadMapProps) {
             })}
             {pings.length > 0 && (
               <button
+                type="button"
                 onClick={clearAllPings}
                 title="Clear all tactical waypoints"
                 className="px-2 py-1.5 rounded-xl text-xs font-bold text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
@@ -899,27 +954,30 @@ export default function SquadMap({ serverId }: SquadMapProps) {
 
           {/* Live GPS Watch */}
           <button
+            type="button"
             onClick={toggleLiveWatchGps}
             title={isWatchingGps ? 'Pause continuous tracking' : 'Start continuous GPS tracking'}
-            className={`flex items-center gap-1.5 rounded-2xl px-3 py-2 text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 border ${
+            className={`flex items-center gap-1.5 rounded-2xl px-2.5 sm:px-3 py-2 text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 border ${
               isWatchingGps
-                ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/40 animate-pulse'
+                ? 'bg-cyan-500 text-white border-cyan-400 shadow-md shadow-cyan-500/30'
                 : 'border-slate-300 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-gray-300 hover:bg-slate-200 dark:hover:bg-white/10'
             }`}
           >
             <span>📡</span>
-            <span className="hidden sm:inline">{isWatchingGps ? 'Live Active' : 'Live Watch'}</span>
+            <span className="inline text-[11px] sm:text-xs">{isWatchingGps ? 'Live Active' : 'Live GPS'}</span>
           </button>
 
           {/* Privacy Toggle Switch */}
-          <div className="flex items-center gap-2 rounded-2xl bg-slate-100 dark:bg-white/5 px-3 py-1.5 border border-slate-200 dark:border-white/5">
-            <span className="text-xs font-semibold text-slate-700 dark:text-gray-300 hidden sm:inline">
+          <div
+            onClick={toggleLocationSharing}
+            title="Toggle broadcasting your location to the squad"
+            className="flex items-center gap-2 rounded-2xl bg-slate-100 dark:bg-white/5 px-2.5 sm:px-3 py-1.5 border border-slate-200 dark:border-white/5 cursor-pointer hover:bg-slate-200/70 dark:hover:bg-white/10 transition-colors select-none active:scale-95"
+          >
+            <span className="text-[11px] sm:text-xs font-bold text-slate-700 dark:text-gray-300">
               Share:
             </span>
-            <button
-              onClick={toggleLocationSharing}
-              title="Toggle broadcasting your location to the squad"
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+            <div
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 isSharingLocation
                   ? 'bg-gradient-to-r from-emerald-500 to-cyan-500'
                   : 'bg-slate-300 dark:bg-gray-700'
@@ -930,7 +988,7 @@ export default function SquadMap({ serverId }: SquadMapProps) {
                   isSharingLocation ? 'translate-x-6' : 'translate-x-1'
                 }`}
               />
-            </button>
+            </div>
           </div>
 
           {/* Roster Drawer Toggle */}

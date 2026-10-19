@@ -1043,7 +1043,10 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           {activeTab === 'radar' && (
             <div className="py-6 space-y-6">
               <div className="rounded-3xl bg-slate-50 dark:bg-white/[0.03] p-6 border border-slate-200 dark:border-white/5 space-y-6 shadow-sm">
-                <div className="flex items-center justify-between">
+                <div
+                  onClick={handleToggleLocation}
+                  className="flex items-center justify-between cursor-pointer p-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-white/5 transition-colors select-none"
+                >
                   <div>
                     <h4 className="text-base font-bold text-slate-900 dark:text-white">10-Minute Radar Broadcasting</h4>
                     <p className="text-xs text-slate-500 dark:text-gray-400 max-w-md mt-1">
@@ -1052,8 +1055,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                   <button
                     type="button"
-                    onClick={handleToggleLocation}
-                    className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors cursor-pointer ${
+                    className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors cursor-pointer pointer-events-none ${
                       isSharingLocation ? 'bg-gradient-to-r from-emerald-500 to-cyan-500' : 'bg-slate-300 dark:bg-gray-700'
                     }`}
                   >
