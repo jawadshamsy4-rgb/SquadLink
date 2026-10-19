@@ -20,6 +20,8 @@ export default function VoiceChannel({ channelId, channelName }: VoiceChannelPro
     isScreenSharing,
     localSpeaking,
     participants,
+    screenStream,
+    remoteScreenStreams,
     connectVoice,
     disconnectVoice,
     toggleMute,
@@ -41,6 +43,32 @@ export default function VoiceChannel({ channelId, channelName }: VoiceChannelPro
   const handleConnect = () => {
     connectVoice(channelId, channelName)
   }
+
+  // Active Screen Shares (Both Local and Remote)
+  const activeStreams: Array<{
+    id: string
+    title: string
+    stream: MediaStream
+    isLocal: boolean
+  }> = []
+
+  if (isScreenSharing && screenStream) {
+    activeStreams.push({
+      id: 'local',
+      title: 'Your Screen (Live Stream)',
+      stream: screenStream,
+      isLocal: true,
+    })
+  }
+
+  Object.entries(remoteScreenStreams).forEach(([peerId, info]) => {
+    activeStreams.push({
+      id: peerId,
+      title: `${info.name}'s Stream (Live 60 FPS)`,
+      stream: info.stream,
+      isLocal: false,
+    })
+  })
 
   return (
     <div className="flex h-full w-full flex-col bg-slate-50 dark:bg-[#090c13] p-6 select-none overflow-y-auto transition-colors duration-200">
@@ -68,26 +96,42 @@ export default function VoiceChannel({ channelId, channelName }: VoiceChannelPro
         )}
       </div>
 
-      {/* Screen Share Video Stream Container */}
-      {isScreenSharing && (
-        <div className="relative mt-4 aspect-video w-full max-h-[500px] overflow-hidden rounded-3xl border border-purple-500/40 bg-black shadow-2xl">
-          <video
-            ref={videoContainerRef}
-            autoPlay
-            playsInline
-            muted
-            className="h-full w-full object-contain"
-          />
-          <div className="absolute top-4 left-4 flex items-center gap-2 rounded-xl bg-purple-600/90 px-3 py-1.5 text-xs font-black text-white backdrop-blur-md shadow-lg">
-            <span className="h-2 w-2 rounded-full bg-red-400 animate-ping" />
-            <span>LIVE SCREEN STREAM (60 FPS)</span>
-          </div>
-          <button
-            onClick={() => toggleScreenShare(videoContainerRef.current)}
-            className="absolute top-4 right-4 rounded-xl bg-black/60 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-600 transition-colors cursor-pointer"
-          >
-            Stop Stream ✕
-          </button>
+      {/* Screen Share Video Stream Containers */}
+      {isConnectedToThisChannel && activeStreams.length > 0 && (
+        <div className="mt-4 flex flex-col gap-4 w-full">
+          {activeStreams.map((share) => (
+            <div
+              key={share.id}
+              className="relative aspect-video w-full max-h-[500px] overflow-hidden rounded-3xl border border-purple-500/40 bg-black shadow-2xl"
+            >
+              <video
+                ref={(el) => {
+                  if (el && el.srcObject !== share.stream) {
+                    el.srcObject = share.stream
+                  }
+                  if (share.isLocal) {
+                    registerVideoContainer(el)
+                  }
+                }}
+                autoPlay
+                playsInline
+                muted={share.isLocal}
+                className="h-full w-full object-contain"
+              />
+              <div className="absolute top-4 left-4 flex items-center gap-2 rounded-xl bg-purple-600/90 px-3 py-1.5 text-xs font-black text-white backdrop-blur-md shadow-lg">
+                <span className="h-2 w-2 rounded-full bg-red-400 animate-ping" />
+                <span>{share.title}</span>
+              </div>
+              {share.isLocal && (
+                <button
+                  onClick={() => toggleScreenShare(null)}
+                  className="absolute top-4 right-4 rounded-xl bg-black/60 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-600 transition-colors cursor-pointer"
+                >
+                  Stop Stream ✕
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -107,6 +151,14 @@ export default function VoiceChannel({ channelId, channelName }: VoiceChannelPro
                     : 'border-slate-200 dark:border-white/10 bg-white dark:bg-[#121620] hover:border-slate-300 dark:hover:border-white/20'
                 } w-44 h-48`}
               >
+                {/* Live screen share indicator pill */}
+                {p.isScreenSharing && (
+                  <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-full bg-purple-600/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-md">
+                    <span>🖥️</span>
+                    <span>LIVE</span>
+                  </div>
+                )}
+
                 {/* Avatar with dynamic neon green ring when speaking */}
                 <div
                   className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-tr from-purple-600 to-cyan-500 text-2xl font-black text-white shadow-lg transition-all ${

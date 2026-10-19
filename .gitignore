@@ -49,3 +49,4 @@ update_generic_branding.js
 *.tgz
 package/
 desktop/dist/
+web/public/downloads/*.exe

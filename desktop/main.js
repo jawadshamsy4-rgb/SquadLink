@@ -31,6 +31,34 @@ function createWindow() {
   const defaultUA = mainWindow.webContents.getUserAgent()
   mainWindow.webContents.setUserAgent(`${defaultUA} SquadLink-Desktop/1.0.0`)
 
+  // Grant WebRTC media and display permissions (microphone, camera, screen-share)
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowedPermissions = ['media', 'display-capture', 'notifications', 'fullscreen']
+    if (allowedPermissions.includes(permission)) {
+      callback(true)
+    } else {
+      callback(true)
+    }
+  })
+
+  // Handle getDisplayMedia (screensharing) in Electron 33
+  const { desktopCapturer } = require('electron')
+  if (mainWindow.webContents.session.setDisplayMediaRequestHandler) {
+    mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
+      desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
+        // Select primary screen or active window
+        if (sources.length > 0) {
+          callback({ video: sources[0] })
+        } else {
+          callback({})
+        }
+      }).catch((e) => {
+        console.error('Desktop capturer error:', e)
+        callback({})
+      })
+    })
+  }
+
   // Prevent desktop app from ever navigating to the marketing website root
   mainWindow.webContents.on('will-navigate', (event, url) => {
     try {
