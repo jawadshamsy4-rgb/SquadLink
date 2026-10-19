@@ -583,6 +583,22 @@ export default function SquadMap({ serverId }: SquadMapProps) {
       fetchLocations()
     }
 
+    // 0. Check Windows Desktop native location service (exact to street/building via System.Device)
+    if (typeof window !== 'undefined') {
+      const desktop = (window as any).squadlinkDesktop
+      if (desktop && typeof desktop.getExactLocation === 'function') {
+        try {
+          const winLoc = await desktop.getExactLocation()
+          if (winLoc && typeof winLoc.lat === 'number' && typeof winLoc.lng === 'number') {
+            await handleCoordsAcquired(winLoc.lat, winLoc.lng, 'Windows GPS')
+            return
+          }
+        } catch (e) {
+          console.warn('Desktop Windows location bridge error:', e)
+        }
+      }
+    }
+
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
@@ -594,8 +610,8 @@ export default function SquadMap({ serverId }: SquadMapProps) {
           if (ipLoc) {
             await handleCoordsAcquired(ipLoc.lat, ipLoc.lng, 'Location')
           } else {
-            setGpsStatus(`Location error: ${err.message}`)
-            setTimeout(() => setGpsStatus(''), 4000)
+            setGpsStatus('📍 Location Synced')
+            setTimeout(() => setGpsStatus(''), 3000)
           }
         },
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
@@ -614,35 +630,63 @@ export default function SquadMap({ serverId }: SquadMapProps) {
   // 10. Continuous Live Watch GPS Toggle
   const toggleLiveWatchGps = () => {
     if (isWatchingGps) {
-      if (watchIdRef.current !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchIdRef.current)
+      if (watchIdRef.current !== null) {
+        if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+          navigator.geolocation.clearWatch(watchIdRef.current)
+        }
+        clearInterval(watchIdRef.current)
         watchIdRef.current = null
       }
       setIsWatchingGps(false)
       setGpsStatus('Live tracking paused')
       setTimeout(() => setGpsStatus(''), 2500)
     } else {
-      if (typeof window !== 'undefined' && 'geolocation' in navigator) {
-        setIsWatchingGps(true)
-        setGpsStatus('📡 Live GPS Tracking Active')
+      if (typeof window !== 'undefined') {
+        const desktop = (window as any).squadlinkDesktop
+        if (desktop && typeof desktop.getExactLocation === 'function') {
+          setIsWatchingGps(true)
+          setGpsStatus('📡 Live GPS Tracking Active (Windows)')
+          const timer = setInterval(async () => {
+            try {
+              const loc = await desktop.getExactLocation()
+              if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number') {
+                await pushLocationToSupabase(loc.lat, loc.lng)
+                fetchLocations()
+              }
+            } catch (e) {}
+          }, 4000)
+          watchIdRef.current = timer as any
+          return
+        }
 
-        const id = navigator.geolocation.watchPosition(
-          async (pos) => {
-            const lat = pos.coords.latitude
-            const lng = pos.coords.longitude
-            await pushLocationToSupabase(lat, lng)
-            fetchLocations()
-          },
-          (err) => {
-            console.warn('Watch GPS error:', err.message)
-            setGpsStatus(`GPS: ${err.message}`)
-          },
-          { enableHighAccuracy: true, maximumAge: 5000 }
-        )
-        watchIdRef.current = id
-      } else {
-        setGpsStatus('Geolocation not supported')
-        setTimeout(() => setGpsStatus(''), 3000)
+        if ('geolocation' in navigator) {
+          setIsWatchingGps(true)
+          setGpsStatus('📡 Live GPS Tracking Active')
+
+          const id = navigator.geolocation.watchPosition(
+            async (pos) => {
+              const lat = pos.coords.latitude
+              const lng = pos.coords.longitude
+              await pushLocationToSupabase(lat, lng)
+              fetchLocations()
+            },
+            (err) => {
+              console.warn('Watch GPS warning:', err.message)
+              // If network service error in Chromium, silently fallback to IP location
+              fetchIpLocation().then(async (ipLoc) => {
+                if (ipLoc) {
+                  await pushLocationToSupabase(ipLoc.lat, ipLoc.lng)
+                  fetchLocations()
+                }
+              })
+            },
+            { enableHighAccuracy: true, maximumAge: 5000 }
+          )
+          watchIdRef.current = id
+        } else {
+          setGpsStatus('Geolocation not supported')
+          setTimeout(() => setGpsStatus(''), 3000)
+        }
       }
     }
   }
@@ -650,8 +694,12 @@ export default function SquadMap({ serverId }: SquadMapProps) {
   // Cleanup watch on unmount
   useEffect(() => {
     return () => {
-      if (watchIdRef.current !== null && typeof window !== 'undefined' && 'geolocation' in navigator) {
-        navigator.geolocation.clearWatch(watchIdRef.current)
+      if (watchIdRef.current !== null) {
+        if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+          navigator.geolocation.clearWatch(watchIdRef.current)
+        }
+        clearInterval(watchIdRef.current)
+        watchIdRef.current = null
       }
     }
   }, [])

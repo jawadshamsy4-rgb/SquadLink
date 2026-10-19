@@ -1,5 +1,6 @@
-const { app, BrowserWindow, Menu, desktopCapturer, session } = require('electron')
+const { app, BrowserWindow, Menu, desktopCapturer, session, ipcMain } = require('electron')
 const path = require('path')
+const { getWindowsLocation } = require('./get-location')
 
 // Determine if dev mode
 const isDev = !app.isPackaged
@@ -7,6 +8,22 @@ const isDev = !app.isPackaged
 // Enable WebRTC features and allow autoplay without manual gesture
 app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer,WinSystemLocationProvider')
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
+// IPC handler for exact Windows hardware / Wi-Fi location
+let cachedLocation = null
+let lastLocationTime = 0
+
+ipcMain.handle('get-windows-location', async () => {
+  if (cachedLocation && Date.now() - lastLocationTime < 15000) {
+    return cachedLocation
+  }
+  const loc = await getWindowsLocation()
+  if (loc) {
+    cachedLocation = loc
+    lastLocationTime = Date.now()
+  }
+  return loc
+})
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -20,6 +37,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.js'),
     },
     autoHideMenuBar: true,
     backgroundColor: '#0a0a0a',
