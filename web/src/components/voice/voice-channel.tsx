@@ -56,7 +56,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
               if (!list.some((m) => m.identity === p.identity)) {
                 list.push({
                   identity: p.identity,
-                  name: p.name,
+                  name: p.name || 'Squad Member',
                   avatarUrl: p.avatarUrl || null,
                   isSpeaking: !!p.isSpeaking,
                   isMuted: !!p.isMuted,
@@ -103,14 +103,18 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
     })
   }
 
-  Object.entries(remoteScreenStreams).forEach(([peerId, info]) => {
-    activeStreams.push({
-      id: peerId,
-      title: `${info.name}'s Stream (Live 60 FPS)`,
-      stream: info.stream,
-      isLocal: false,
+  if (remoteScreenStreams && typeof remoteScreenStreams === 'object') {
+    Object.entries(remoteScreenStreams).forEach(([peerId, info]) => {
+      if (info && info.stream) {
+        activeStreams.push({
+          id: peerId,
+          title: `${info.name || 'User'}'s Stream (Live 60 FPS)`,
+          stream: info.stream,
+          isLocal: false,
+        })
+      }
     })
-  })
+  }
 
   return (
     <div className="flex h-full w-full flex-col bg-slate-50 dark:bg-[#090c13] p-6 select-none overflow-y-auto transition-colors duration-200">
@@ -215,10 +219,10 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
                     isSpeakingNow ? 'ring-4 ring-emerald-400 animate-pulse' : ''
                   }`}
                 >
-                  {p.avatarUrl ? (
+                  {p?.avatarUrl ? (
                     <img src={p.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
                   ) : (
-                    p.name.slice(0, 2).toUpperCase()
+                    (p?.name || 'User').slice(0, 2).toUpperCase()
                   )}
                   {(isLocal ? isMuted : p.isMuted) && (
                     <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs text-white shadow-md">
@@ -229,7 +233,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
 
                 <div className="mt-4 flex items-center justify-center max-w-[150px] truncate">
                   <span className="font-bold text-slate-900 dark:text-white truncate text-sm">
-                    {p.name} {isLocal && '(You)'}
+                    {p?.name || 'Squad Mate'} {isLocal && '(You)'}
                   </span>
                 </div>
 
@@ -272,10 +276,10 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
                         isSpeakingNow ? 'ring-4 ring-emerald-400 animate-pulse' : ''
                       }`}
                     >
-                      {p.avatarUrl ? (
+                      {p?.avatarUrl ? (
                         <img src={p.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
                       ) : (
-                        p.name.slice(0, 2).toUpperCase()
+                        (p?.name || 'User').slice(0, 2).toUpperCase()
                       )}
                       {p.isMuted && (
                         <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs text-white shadow-md">
@@ -286,7 +290,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
 
                     <div className="mt-4 flex items-center justify-center max-w-[150px] truncate">
                       <span className="font-bold text-slate-900 dark:text-white truncate text-sm">
-                        {p.name}
+                        {p?.name || 'Squad Mate'}
                       </span>
                     </div>
 

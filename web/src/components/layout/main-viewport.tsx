@@ -7,6 +7,7 @@ import MessageInput from '@/components/chat/message-input'
 import VoiceChannel from '@/components/voice/voice-channel'
 import SquadMap from '@/components/map/squad-map'
 import MemberSidebar, { ServerMember } from '@/components/layout/member-sidebar'
+import { ErrorBoundary } from '@/components/ui/error-boundary'
 
 type ChannelType = 'text' | 'voice' | 'map'
 
@@ -256,11 +257,13 @@ export default function MainViewport({
           )}
 
           {channel.type === 'voice' && (
-            <VoiceChannel
-              channelId={channel.id}
-              channelName={channel.name}
-              serverId={channel.server_id || serverId || undefined}
-            />
+            <ErrorBoundary fallbackTitle="Voice channel encountered an error">
+              <VoiceChannel
+                channelId={channel.id}
+                channelName={channel.name}
+                serverId={channel.server_id || serverId || undefined}
+              />
+            </ErrorBoundary>
           )}
 
           {channel.type === 'map' && (

@@ -185,7 +185,7 @@ export default function ChannelSidebar({
               if (!byChannel[p.channelId].some((m) => m.identity === p.identity)) {
                 byChannel[p.channelId].push({
                   identity: p.identity,
-                  name: p.name,
+                  name: p.name || 'Squad Member',
                   avatarUrl: p.avatarUrl || null,
                   isSpeaking: !!p.isSpeaking,
                   isMuted: !!p.isMuted,
@@ -648,20 +648,20 @@ export default function ChannelSidebar({
                                         : ''
                                     }`}
                                   >
-                                    {p.avatarUrl ? (
+                                    {p?.avatarUrl ? (
                                       <img
                                         src={p.avatarUrl}
                                         alt=""
                                         className="h-full w-full rounded-full object-cover"
                                       />
                                     ) : (
-                                      p.name.slice(0, 2).toUpperCase()
+                                      (p?.name || 'User').slice(0, 2).toUpperCase()
                                     )}
                                   </div>
                                 </div>
 
                                 <span className="truncate font-semibold text-slate-800 dark:text-gray-200 text-xs">
-                                  {p.name} {isLocal && '(You)'}
+                                  {p?.name || 'Squad Member'} {isLocal && '(You)'}
                                 </span>
                               </div>
 

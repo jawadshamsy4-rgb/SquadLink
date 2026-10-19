@@ -338,6 +338,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       const bufferLength = analyser.frequencyBinCount
       const dataArray = new Uint8Array(bufferLength)
 
+      let lastRemoteSpeaking = false
       const monitorSpeaking = () => {
         if (!peerConnectionsRef.current.has(peerId)) return
         analyser.getByteFrequencyData(dataArray)
@@ -348,9 +349,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         const avg = sum / bufferLength
         const isSpeaking = avg > 12
 
-        setParticipants((prev) =>
-          prev.map((p) => (p.identity === peerId ? { ...p, isSpeaking } : p))
-        )
+        if (isSpeaking !== lastRemoteSpeaking) {
+          lastRemoteSpeaking = isSpeaking
+          setParticipants((prev) =>
+            prev.map((p) => (p.identity === peerId ? { ...p, isSpeaking } : p))
+          )
+        }
 
         requestAnimationFrame(monitorSpeaking)
       }
@@ -529,13 +533,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
             // Speaking volume threshold
             const isSpeakingNow = average > 12 && !isMutedRef.current
-            setLocalSpeaking(isSpeakingNow)
-            setParticipants((prev) =>
-              prev.map((p, idx) => (idx === 0 ? { ...p, isSpeaking: isSpeakingNow } : p))
-            )
 
             if (isSpeakingNow !== lastSpeakingState) {
               lastSpeakingState = isSpeakingNow
+              setLocalSpeaking(isSpeakingNow)
+              setParticipants((prev) =>
+                prev.map((p, idx) => (idx === 0 ? { ...p, isSpeaking: isSpeakingNow } : p))
+              )
+
               if (serverPresenceChannelRef.current) {
                 serverPresenceChannelRef.current.track({
                   identity: myIdentityRef.current,
@@ -699,7 +704,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               if (p && p.identity) {
                 memberMap.set(p.identity, {
                   identity: p.identity,
-                  name: p.name,
+                  name: p.name || 'Squad Member',
                   avatarUrl: p.avatarUrl || null,
                   isSpeaking: p.identity === localParticipant.identity ? localSpeaking : !!p.isSpeaking,
                   isMuted: p.identity === localParticipant.identity ? isMutedRef.current : !!p.isMuted,
