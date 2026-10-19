@@ -81,9 +81,14 @@ export default function ChannelSidebar({
     disconnectVoice,
     toggleMute,
     toggleDeafen,
+    serverVoiceMembers,
+    setVoiceServerId,
   } = useVoice()
   const supabase = createClient()
-  const [serverVoiceMembers, setServerVoiceMembers] = useState<Record<string, ParticipantInfo[]>>({})
+
+  useEffect(() => {
+    setVoiceServerId(serverId || null)
+  }, [serverId, setVoiceServerId])
 
   // Close channel menus when clicking outside
   useEffect(() => {
@@ -168,42 +173,8 @@ export default function ChannelSidebar({
       )
       .subscribe()
 
-    // Server-wide Voice Presence (Track members in all voice channels even without joining)
-    const voicePresChannel = supabase.channel(`server-voice-presence-${serverId}`)
-
-    voicePresChannel
-      .on('presence', { event: 'sync' }, () => {
-        const state = voicePresChannel.presenceState()
-        const byChannel: Record<string, ParticipantInfo[]> = {}
-
-        Object.values(state).forEach((presList: any) => {
-          presList.forEach((p: any) => {
-            if (p && p.channelId && p.identity) {
-              if (!byChannel[p.channelId]) {
-                byChannel[p.channelId] = []
-              }
-              if (!byChannel[p.channelId].some((m) => m.identity === p.identity)) {
-                byChannel[p.channelId].push({
-                  identity: p.identity,
-                  name: p.name || 'Squad Member',
-                  avatarUrl: p.avatarUrl || null,
-                  isSpeaking: !!p.isSpeaking,
-                  isMuted: !!p.isMuted,
-                  isDeafened: !!p.isDeafened,
-                  isScreenSharing: !!p.isScreenSharing,
-                })
-              }
-            }
-          })
-        })
-
-        setServerVoiceMembers(byChannel)
-      })
-      .subscribe()
-
     return () => {
       supabase.removeChannel(channel)
-      supabase.removeChannel(voicePresChannel)
     }
   }, [serverId, user])
 

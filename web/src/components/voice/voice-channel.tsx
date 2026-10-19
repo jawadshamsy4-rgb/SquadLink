@@ -1,9 +1,8 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect } from 'react'
 import { useAuth } from '@/components/providers/auth-provider'
 import { useVoice, ParticipantInfo } from '@/components/providers/voice-provider'
-import { createClient } from '@/lib/supabase/client'
 
 interface VoiceChannelProps {
   channelId: string
@@ -13,8 +12,6 @@ interface VoiceChannelProps {
 
 export default function VoiceChannel({ channelId, channelName, serverId }: VoiceChannelProps) {
   const { user, profile } = useAuth()
-  const supabase = createClient()
-  const [roomMembers, setRoomMembers] = useState<ParticipantInfo[]>([])
   const {
     connectedChannel,
     isConnected,
@@ -24,6 +21,8 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
     isScreenSharing,
     localSpeaking,
     participants,
+    serverVoiceMembers,
+    setVoiceServerId,
     screenStream,
     remoteScreenStreams,
     connectVoice,
@@ -36,45 +35,16 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
 
   const videoContainerRef = useRef<HTMLVideoElement | null>(null)
 
-  const isConnectedToThisChannel = isConnected && connectedChannel?.id === channelId
-
-  // Live presence subscription to see who is in this voice channel when viewing without connecting
   useEffect(() => {
-    if (isConnectedToThisChannel) return
-
-    const presChannel = serverId
-      ? supabase.channel(`server-voice-presence-${serverId}`)
-      : supabase.channel(`voice-channel-${channelId}`)
-
-    presChannel
-      .on('presence', { event: 'sync' }, () => {
-        const state = presChannel.presenceState()
-        const list: ParticipantInfo[] = []
-        Object.values(state).forEach((presList: any) => {
-          presList.forEach((p: any) => {
-            if (p && p.identity && (!serverId || p.channelId === channelId)) {
-              if (!list.some((m) => m.identity === p.identity)) {
-                list.push({
-                  identity: p.identity,
-                  name: p.name || 'Squad Member',
-                  avatarUrl: p.avatarUrl || null,
-                  isSpeaking: !!p.isSpeaking,
-                  isMuted: !!p.isMuted,
-                  isDeafened: !!p.isDeafened,
-                  isScreenSharing: !!p.isScreenSharing,
-                })
-              }
-            }
-          })
-        })
-        setRoomMembers(list)
-      })
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(presChannel)
+    if (serverId) {
+      setVoiceServerId(serverId)
     }
-  }, [channelId, serverId, isConnectedToThisChannel])
+  }, [serverId, setVoiceServerId])
+
+  const isConnectedToThisChannel = isConnected && connectedChannel?.id === channelId
+  const roomMembers = isConnectedToThisChannel
+    ? participants
+    : serverVoiceMembers[channelId] || []
 
   useEffect(() => {
     if (videoContainerRef.current) {
