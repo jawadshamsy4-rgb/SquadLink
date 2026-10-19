@@ -10,22 +10,10 @@ export default function LandingPage() {
 
   const handleDownloadWindows = () => {
     setDownloadModal('windows')
-    const link = document.createElement('a')
-    link.href = '/api/download/windows'
-    link.download = 'SquadLink-Setup-1.0.0.exe'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
   }
 
   const handleDownloadAndroid = () => {
     setDownloadModal('android')
-    const link = document.createElement('a')
-    link.href = '/api/download/android'
-    link.download = 'SquadLink.apk'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
   }
 
   return (
@@ -500,7 +488,7 @@ export default function LandingPage() {
               <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2">
                 <p className="font-bold text-white text-[11px] uppercase tracking-wider">Installation Quick Guide:</p>
                 <ol className="list-decimal list-inside space-y-1 text-slate-400 text-[11px] leading-relaxed">
-                  <li>Your download starts automatically. If not, click below.</li>
+                  <li>Click <strong className="text-white">Download .exe (78 MB)</strong> below.</li>
                   <li>Run <span className="text-white font-mono">SquadLink-Setup-1.0.0.exe</span>.</li>
                   <li>If prompted by Windows SmartScreen, click <strong className="text-white">More info</strong> → <strong className="text-white">Run anyway</strong>.</li>
                 </ol>
@@ -560,7 +548,7 @@ export default function LandingPage() {
               <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-2">
                 <p className="font-bold text-white text-[11px] uppercase tracking-wider">Installation Quick Guide:</p>
                 <ol className="list-decimal list-inside space-y-1 text-slate-400 text-[11px] leading-relaxed">
-                  <li>Your APK download starts automatically. If not, click below.</li>
+                  <li>Click <strong className="text-white">Download APK (1.5 MB)</strong> below.</li>
                   <li>Tap the downloaded <span className="text-white font-mono">SquadLink.apk</span> file.</li>
                   <li>If prompted, enable <strong className="text-white">&quot;Install unknown apps&quot;</strong> in Settings.</li>
                 </ol>
