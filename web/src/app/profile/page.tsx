@@ -33,6 +33,7 @@ export default function ProfilePage() {
   const [statusText, setStatusText] = useState('Online & Chilling')
   const [isSharingLocation, setIsSharingLocation] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const supabase = createClient()
 
@@ -99,7 +100,7 @@ export default function ProfilePage() {
             {theme === 'dark' ? '🌙 Dark' : '☀️ Light'}
           </button>
           <button
-            onClick={signOut}
+            onClick={() => setShowLogoutConfirm(true)}
             className="rounded-xl bg-red-50 dark:bg-red-600/20 border border-red-200 dark:border-red-500/30 px-3 py-1.5 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white transition-all cursor-pointer"
           >
             Log Out 🚪
@@ -269,6 +270,40 @@ export default function ProfilePage() {
           </div>
         </div>
       </main>
+
+      {/* Logout Confirmation Dialog */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-sm rounded-3xl border border-red-500/20 bg-white dark:bg-[#121622] p-6 shadow-2xl text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/10 text-2xl text-red-500">
+              🚪
+            </div>
+            <h3 className="text-lg font-black text-slate-900 dark:text-white">Log Out of SquadLink?</h3>
+            <p className="mt-2 text-xs text-slate-500 dark:text-gray-400 leading-relaxed">
+              Are you sure you want to log out? You will need to enter your email and password to sign back in.
+            </p>
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-gray-200 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowLogoutConfirm(false)
+                  await signOut()
+                }}
+                className="flex-1 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-red-600/25 hover:from-red-500 hover:to-rose-500 transition-all cursor-pointer"
+              >
+                Yes, Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

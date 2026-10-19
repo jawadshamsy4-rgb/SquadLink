@@ -77,10 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await syncProfile(user)
   }
 
+  const SESSION_BACKUP_KEY = 'squadlink_session_v2'
+
   useEffect(() => {
     let isMounted = true
 
-    // 1. Initial session load
+    // 1. Initial session load with fallback to persistent session storage
     const initAuth = async () => {
       try {
         const {
@@ -91,14 +93,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (session?.user) {
           setUser(session.user)
+          try {
+            localStorage.setItem(SESSION_BACKUP_KEY, JSON.stringify(session))
+          } catch {}
           await syncProfile(session.user)
         } else {
-          setUser(null)
-          setProfile(null)
+          // Check local session backup (critical for mobile APK cold-starts)
+          let restored = false
+          if (typeof window !== 'undefined') {
+            try {
+              const raw = localStorage.getItem(SESSION_BACKUP_KEY)
+              if (raw) {
+                const parsed = JSON.parse(raw)
+                if (parsed?.refresh_token) {
+                  const { data, error } = await supabase.auth.setSession({
+                    access_token: parsed.access_token,
+                    refresh_token: parsed.refresh_token,
+                  })
+                  if (data?.session?.user) {
+                    setUser(data.session.user)
+                    try {
+                      localStorage.setItem(SESSION_BACKUP_KEY, JSON.stringify(data.session))
+                    } catch {}
+                    await syncProfile(data.session.user)
+                    restored = true
+                  } else if (parsed?.user) {
+                    // Retain user if offline or network temporarily unreachable
+                    setUser(parsed.user)
+                    restored = true
+                  }
+                }
+              }
+            } catch (storageErr) {
+              console.warn('Could not restore from session backup:', storageErr)
+            }
+          }
+
+          if (!restored) {
+            setUser(null)
+            setProfile(null)
+          }
         }
       } catch (err) {
         console.error('Error fetching auth session:', err)
         if (isMounted) {
+          // Attempt offline fallback if session backup exists
+          if (typeof window !== 'undefined') {
+            try {
+              const raw = localStorage.getItem(SESSION_BACKUP_KEY)
+              if (raw) {
+                const parsed = JSON.parse(raw)
+                if (parsed?.user) {
+                  setUser(parsed.user)
+                  return
+                }
+              }
+            } catch {}
+          }
           setUser(null)
           setProfile(null)
         }
@@ -117,8 +168,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (session?.user) {
         setUser(session.user)
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(SESSION_BACKUP_KEY, JSON.stringify(session))
+          } catch {}
+        }
         await syncProfile(session.user)
-      } else {
+      } else if (event === 'SIGNED_OUT') {
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.removeItem(SESSION_BACKUP_KEY)
+            localStorage.removeItem('squadlink_auth_backup_v1')
+          } catch {}
+        }
         setUser(null)
         setProfile(null)
       }
@@ -134,6 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     try {
       if (typeof window !== 'undefined') {
+        localStorage.removeItem(SESSION_BACKUP_KEY)
         localStorage.removeItem('squadlink_auth_backup_v1')
         sessionStorage.clear()
       }
@@ -142,12 +205,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn('Sign out error:', err)
     } finally {
       if (typeof window !== 'undefined') {
+        localStorage.removeItem(SESSION_BACKUP_KEY)
         localStorage.removeItem('squadlink_auth_backup_v1')
         sessionStorage.clear()
       }
       setUser(null)
       setProfile(null)
-      window.location.href = '/login'
+      window.location.replace('/login')
     }
   }
 

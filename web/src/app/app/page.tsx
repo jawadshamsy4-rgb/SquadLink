@@ -30,12 +30,62 @@ export default function AppPage() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const supabase = createClient()
 
-  // Redirect to login if user is not authenticated
+  // Redirect to login ONLY if user is truly not authenticated and no local backup exists
   useEffect(() => {
     if (!loading && !user) {
-      router.replace('/login')
+      const hasBackup =
+        typeof window !== 'undefined' &&
+        (!!localStorage.getItem('squadlink_session_v2') ||
+          !!localStorage.getItem('squadlink_auth_backup_v1'))
+
+      if (!hasBackup) {
+        router.replace('/login')
+      }
     }
   }, [loading, user, router])
+
+  // Handle mobile hardware & browser back navigation (dismiss modals/drawer, prevent kicking to /login)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    // Ensure a history state exists on /app so back button is captured
+    window.history.pushState({ appPage: true }, '', window.location.href)
+
+    const handlePopState = () => {
+      if (isSettingsOpen) {
+        setIsSettingsOpen(false)
+        window.history.pushState({ appPage: true }, '', window.location.href)
+        return
+      }
+
+      if (isCreateServerOpen) {
+        setIsCreateServerOpen(false)
+        window.history.pushState({ appPage: true }, '', window.location.href)
+        return
+      }
+
+      if (isMobileNavOpen) {
+        setIsMobileNavOpen(false)
+        window.history.pushState({ appPage: true }, '', window.location.href)
+        return
+      }
+
+      if (selectedChannel && window.innerWidth < 768) {
+        setSelectedChannel(null)
+        setIsMobileNavOpen(true)
+        window.history.pushState({ appPage: true }, '', window.location.href)
+        return
+      }
+
+      // Retain user safely inside /app rather than popping out to /login
+      window.history.pushState({ appPage: true }, '', window.location.href)
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [isSettingsOpen, isCreateServerOpen, isMobileNavOpen, selectedChannel])
 
   // Auto-select first channel of selected server so viewport is populated
   useEffect(() => {

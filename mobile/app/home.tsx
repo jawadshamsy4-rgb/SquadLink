@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native'
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl, Alert } from 'react-native'
 import { router } from 'expo-router'
 import { supabase } from '../lib/supabase'
 import { Ionicons } from '@expo/vector-icons'
@@ -156,9 +156,22 @@ export default function HomeScreen() {
     }
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.replace('/')
+  const handleLogout = () => {
+    Alert.alert(
+      'Log Out of SquadLink?',
+      'Are you sure you want to log out? You will need to enter your email and password to sign back in.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: async () => {
+            await supabase.auth.signOut()
+            router.replace('/')
+          },
+        },
+      ]
+    )
   }
 
   // Render channel icon

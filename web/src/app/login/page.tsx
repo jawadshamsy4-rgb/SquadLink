@@ -80,7 +80,7 @@ export default function LoginPage() {
     setMessage('')
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     })
@@ -89,9 +89,14 @@ export default function LoginPage() {
       setError(error.message)
       setLoading(false)
     } else {
+      if (data?.session && typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('squadlink_session_v2', JSON.stringify(data.session))
+        } catch {}
+      }
       const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
       const next = params?.get('next') || '/app'
-      window.location.href = next
+      window.location.replace(next)
     }
   }
 

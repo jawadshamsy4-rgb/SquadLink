@@ -60,15 +60,17 @@ export function createClient() {
           )
 
           if (!hasAuthCookie && Object.keys(backup).length > 0) {
-            // Restore from localStorage backup into document.cookie
+            // Restore from localStorage backup into document.cookie AND return directly
+            const restored: { name: string; value: string }[] = []
             for (const [name, value] of Object.entries(backup)) {
               if (value && typeof document !== 'undefined') {
                 try {
                   document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; max-age=31536000; path=/; SameSite=Lax`
                 } catch {}
               }
+              restored.push({ name, value })
             }
-            return parseDocumentCookies()
+            return restored
           }
 
           // If document.cookie has auth cookies, ensure localStorage backup is up to date
