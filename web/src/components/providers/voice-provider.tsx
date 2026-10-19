@@ -975,18 +975,49 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           prev.map((p, idx) => (idx === 0 ? { ...p, isScreenSharing: false } : p))
         )
       } else {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-          alert('Screen sharing is not supported on this mobile/browser platform.')
+        let stream: MediaStream | null = null
+
+        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+          try {
+            stream = await navigator.mediaDevices.getDisplayMedia({
+              video: {
+                cursor: 'always',
+                frameRate: { ideal: 60, max: 60 },
+              } as any,
+              audio: true,
+            })
+          } catch (audioErr: any) {
+            console.warn('Screen share with audio unavailable, falling back to video only:', audioErr.message)
+            try {
+              stream = await navigator.mediaDevices.getDisplayMedia({
+                video: {
+                  cursor: 'always',
+                  frameRate: { ideal: 60, max: 60 },
+                } as any,
+                audio: false,
+              })
+            } catch (videoErr: any) {
+              console.warn('Screen capture cancelled or denied:', videoErr.message)
+              return
+            }
+          }
+        } else if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          // Mobile / WebView fallback: Stream camera feed as live tactical video in the squad channel
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+              audio: false,
+            })
+          } catch (camErr: any) {
+            alert('Camera or screen stream unavailable: ' + camErr.message)
+            return
+          }
+        } else {
+          alert('Screen sharing is not supported on this platform.')
           return
         }
 
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            cursor: 'always',
-            frameRate: { ideal: 60, max: 60 },
-          } as any,
-          audio: true,
-        })
+        if (!stream) return
 
         screenStreamRef.current = stream
         setScreenStream(stream)

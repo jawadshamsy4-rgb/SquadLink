@@ -1,8 +1,12 @@
-const { app, BrowserWindow, Menu } = require('electron')
+const { app, BrowserWindow, Menu, desktopCapturer } = require('electron')
 const path = require('path')
 
 // Determine if dev mode
 const isDev = !app.isPackaged
+
+// Enable WebRTC features and allow autoplay without manual gesture
+app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer')
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -15,6 +19,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: false,
     },
     autoHideMenuBar: true,
     backgroundColor: '#0a0a0a',
@@ -31,24 +36,27 @@ function createWindow() {
   const defaultUA = mainWindow.webContents.getUserAgent()
   mainWindow.webContents.setUserAgent(`${defaultUA} SquadLink-Desktop/1.0.0`)
 
-  // Grant WebRTC media and display permissions (microphone, camera, screen-share)
+  // Grant all WebRTC media and display capture permissions unconditionally
   mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['media', 'display-capture', 'notifications', 'fullscreen']
-    if (allowedPermissions.includes(permission)) {
-      callback(true)
-    } else {
-      callback(true)
-    }
+    callback(true)
   })
 
-  // Handle getDisplayMedia (screensharing) in Electron 33
-  const { desktopCapturer } = require('electron')
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+    return true
+  })
+
+  mainWindow.webContents.session.setDevicePermissionHandler(() => true)
+
+  // Handle getDisplayMedia (screensharing) in Electron 33+
   if (mainWindow.webContents.session.setDisplayMediaRequestHandler) {
     mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
       desktopCapturer.getSources({ types: ['screen', 'window'] }).then((sources) => {
-        // Select primary screen or active window
         if (sources.length > 0) {
-          callback({ video: sources[0] })
+          const response = { video: sources[0] }
+          if (request.audio) {
+            response.audio = 'loopback'
+          }
+          callback(response)
         } else {
           callback({})
         }
@@ -71,13 +79,22 @@ function createWindow() {
     } catch (e) {}
   })
 
+  mainWindow.webContents.on('will-redirect', (event, url) => {
+    try {
+      const parsed = new URL(url)
+      if (parsed.pathname === '/' || parsed.pathname === '') {
+        event.preventDefault()
+        const targetUrl = isDev ? 'http://localhost:3000/login' : 'https://squad-link-five.vercel.app/login'
+        mainWindow.loadURL(targetUrl)
+      }
+    } catch (e) {}
+  })
+
   // Load the web app
   if (isDev) {
-    // In dev mode, connect to the Next.js dev server
     mainWindow.loadURL('http://localhost:3000/app')
     mainWindow.webContents.openDevTools()
   } else {
-    // In production, load from the live deployed SquadLink app URL
     mainWindow.loadURL('https://squad-link-five.vercel.app/app')
   }
 
