@@ -67,29 +67,48 @@ export default function CreateServerModal({
 
       if (serverErr) throw serverErr
 
-      // 2. Add owner to server_members
-      await supabase.from('server_members').insert({
-        server_id: server.id,
-        user_id: userId,
-        role: 'owner',
-      })
+      // 2. Ensure owner is in server_members (database trigger also auto-adds owner)
+      try {
+        await supabase.from('server_members').upsert({
+          server_id: server.id,
+          user_id: userId,
+          role: 'owner',
+        }, { onConflict: 'server_id,user_id' })
+      } catch (e) {
+        console.warn('Membership already set by trigger:', e)
+      }
 
-      // 3. Create default channels for this new server
-      await supabase.from('channels').insert([
-        { server_id: server.id, name: 'general', type: 'text', position: 0 },
-        { server_id: server.id, name: 'announcements', type: 'text', position: 1 },
-        { server_id: server.id, name: 'voice-comms', type: 'voice', position: 2 },
-        { server_id: server.id, name: 'squad-radar', type: 'map', position: 3 },
-      ])
+      // 3. Ensure default channels exist (if not populated by trigger)
+      try {
+        const { data: existingChannels } = await supabase
+          .from('channels')
+          .select('id')
+          .eq('server_id', server.id)
+
+        if (!existingChannels || existingChannels.length === 0) {
+          await supabase.from('channels').insert([
+            { server_id: server.id, name: 'general', type: 'text', position: 0 },
+            { server_id: server.id, name: 'announcements', type: 'text', position: 1 },
+            { server_id: server.id, name: 'voice-comms', type: 'voice', position: 2 },
+            { server_id: server.id, name: 'squad-radar', type: 'map', position: 3 },
+          ])
+        }
+      } catch (e) {
+        console.warn('Channels error/already present:', e)
+      }
 
       // 4. Initialize location entry
-      await supabase.from('locations').insert({
-        user_id: userId,
-        server_id: server.id,
-        latitude: 23.8103,
-        longitude: 90.4125,
-        is_sharing_location: true,
-      })
+      try {
+        await supabase.from('locations').insert({
+          user_id: userId,
+          server_id: server.id,
+          latitude: 23.8103,
+          longitude: 90.4125,
+          is_sharing_location: true,
+        })
+      } catch (e) {
+        console.warn('Location entry error:', e)
+      }
 
       setCreatedInviteCode(code)
       setTimeout(() => {
