@@ -84,10 +84,15 @@ export default function LandingPage() {
           <div className="h-11 w-11 rounded-2xl overflow-hidden shadow-lg shadow-purple-500/30 border border-white/20 group-hover:scale-105 transition-transform">
             <img src="/logo.png" alt="SquadLink" className="h-full w-full object-cover" />
           </div>
-          <span className="text-2xl font-black tracking-tight text-white flex items-center gap-1.5">
-            SquadLink
-            <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-          </span>
+          <div className="flex flex-col">
+            <span className="text-2xl font-black tracking-tight text-white flex items-center gap-1.5 leading-none">
+              SquadLink
+              <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+            </span>
+            <span className="text-[10px] font-semibold text-slate-400 mt-0.5">
+              Developed by <span className="text-cyan-400 font-bold">Shamsy</span>
+            </span>
+          </div>
         </Link>
 
         {/* Center Navigation Links */}
@@ -129,10 +134,16 @@ export default function LandingPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
           {/* Left Column: Headline & Action Buttons */}
           <div className="lg:col-span-5 text-center lg:text-left space-y-7">
-            {/* Tagline Pill */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-xs font-black uppercase tracking-wider shadow-inner">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Next-Gen Tactical Gaming Chat</span>
+            {/* Tagline Pill & Developer Credit */}
+            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2.5">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 text-xs font-black uppercase tracking-wider shadow-inner">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Next-Gen Tactical Gaming Chat</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-slate-300 font-medium">
+                <span className="text-purple-400">⚡</span>
+                <span>Developed by <strong className="text-cyan-400 font-bold">Shamsy</strong></span>
+              </div>
             </div>
 
             {/* Main Headline */}
@@ -475,7 +486,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-2.5">
             <img src="/logo.png" alt="" className="w-6 h-6 rounded-lg object-cover" />
             <span className="font-extrabold text-sm text-white">SquadLink</span>
-            <span>• Next-Gen Gaming Comms</span>
+            <span>• Developed by <strong className="text-cyan-400 font-bold">Shamsy</strong></span>
           </div>
 
           <div className="flex items-center gap-6 font-bold">
@@ -486,7 +497,7 @@ export default function LandingPage() {
           </div>
 
           <div>
-            © 2026 SquadLink. Built for gaming squads worldwide.
+            © 2026 SquadLink. Developed by <strong className="text-slate-300 font-semibold">Shamsy</strong>.
           </div>
         </div>
       </footer>
