@@ -23,6 +23,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
     participants,
     serverVoiceMembers,
     setVoiceServerId,
+    setVoiceChannelIds,
     screenStream,
     remoteScreenStreams,
     connectVoice,
@@ -39,7 +40,10 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
     if (serverId) {
       setVoiceServerId(serverId)
     }
-  }, [serverId, setVoiceServerId])
+    if (channelId) {
+      setVoiceChannelIds([channelId])
+    }
+  }, [serverId, channelId, setVoiceServerId, setVoiceChannelIds])
 
   const isConnectedToThisChannel = isConnected && connectedChannel?.id === channelId
   const roomMembers = isConnectedToThisChannel

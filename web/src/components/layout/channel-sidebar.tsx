@@ -83,12 +83,20 @@ export default function ChannelSidebar({
     toggleDeafen,
     serverVoiceMembers,
     setVoiceServerId,
+    setVoiceChannelIds,
   } = useVoice()
   const supabase = createClient()
 
   useEffect(() => {
     setVoiceServerId(serverId || null)
   }, [serverId, setVoiceServerId])
+
+  useEffect(() => {
+    const vIds = channels.filter((c) => c.type === 'voice').map((c) => c.id)
+    if (vIds.length > 0) {
+      setVoiceChannelIds(vIds)
+    }
+  }, [channels, setVoiceChannelIds])
 
   // Close channel menus when clicking outside
   useEffect(() => {

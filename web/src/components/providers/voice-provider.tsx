@@ -6,6 +6,7 @@ import {
   useState,
   useRef,
   useEffect,
+  useCallback,
   type ReactNode,
 } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -50,6 +51,7 @@ interface VoiceContextType {
   participants: ParticipantInfo[]
   serverVoiceMembers: Record<string, ParticipantInfo[]>
   setVoiceServerId: (id: string | null) => void
+  setVoiceChannelIds: (ids: string[]) => void
   ping: number
   callDuration: string
   channelStatus: string
@@ -86,6 +88,7 @@ const VoiceContext = createContext<VoiceContextType>({
   participants: [],
   serverVoiceMembers: {},
   setVoiceServerId: () => {},
+  setVoiceChannelIds: () => {},
   ping: 24,
   callDuration: '00:00',
   channelStatus: 'Set a channel status',
@@ -176,9 +179,49 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [serverVoiceMembers, setServerVoiceMembers] = useState<Record<string, ParticipantInfo[]>>({})
   const connectedChannelRef = useRef<ConnectedChannelInfo | null>(null)
 
+  // Direct channel presence subscriptions for all voice channels on active server
+  const [voiceChannelIds, setVoiceChannelIdsState] = useState<string[]>([])
+  const voiceChannelListenersRef = useRef<Map<string, any>>(new Map())
+
+  const setVoiceChannelIds = useCallback((ids: string[]) => {
+    setVoiceChannelIdsState((prev) => {
+      const merged = Array.from(new Set([...prev, ...ids]))
+      if (merged.length === prev.length && merged.every((id) => prev.includes(id))) {
+        return prev
+      }
+      return merged
+    })
+  }, [])
+
+  useEffect(() => {
+    if (user?.id) {
+      myIdentityRef.current = user.id
+    }
+  }, [user?.id])
+
   useEffect(() => {
     connectedChannelRef.current = connectedChannel
   }, [connectedChannel])
+
+  // Automatically fetch voice channel IDs whenever voiceServerId changes
+  useEffect(() => {
+    if (!voiceServerId) {
+      setVoiceChannelIdsState([])
+      return
+    }
+
+    supabase
+      .from('channels')
+      .select('id')
+      .eq('server_id', voiceServerId)
+      .eq('type', 'voice')
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const ids = data.map((c) => c.id)
+          setVoiceChannelIdsState((prev) => Array.from(new Set([...prev, ...ids])))
+        }
+      })
+  }, [voiceServerId])
 
   // Single, centralized Server-Wide Voice Presence subscription with instant 0ms broadcast updates
   useEffect(() => {
@@ -387,22 +430,181 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
   }, [voiceServerId, user?.id])
 
+  // Direct Channel Presence Listeners for ALL voice channels of the server
+  // This guarantees ANY user outside the channel sees who is currently inside with 100% reliability!
+  useEffect(() => {
+    const activeConnectedId = connectedChannel?.id
+
+    // 1. If actively connected to a channel, remove observer listener (presenceChannelRef handles it)
+    if (activeConnectedId && voiceChannelListenersRef.current.has(activeConnectedId)) {
+      const existing = voiceChannelListenersRef.current.get(activeConnectedId)
+      try {
+        supabase.removeChannel(existing)
+      } catch (e) {}
+      voiceChannelListenersRef.current.delete(activeConnectedId)
+    }
+
+    // 2. Remove listeners for channels no longer in voiceChannelIds
+    const listeningIds = Array.from(voiceChannelListenersRef.current.keys())
+    for (const id of listeningIds) {
+      if (!voiceChannelIds.includes(id)) {
+        const listener = voiceChannelListenersRef.current.get(id)
+        try {
+          supabase.removeChannel(listener)
+        } catch (e) {}
+        voiceChannelListenersRef.current.delete(id)
+        setServerVoiceMembers((prev) => {
+          const next = { ...prev }
+          delete next[id]
+          return next
+        })
+      }
+    }
+
+    // 3. For each channel in voiceChannelIds (except actively connected one), subscribe as observer listener
+    for (const vId of voiceChannelIds) {
+      if (vId === activeConnectedId) continue
+      if (voiceChannelListenersRef.current.has(vId)) continue
+
+      const channelTopic = `voice-channel-${vId}`
+      const myId = myIdentityRef.current || user?.id || `user-${Date.now()}`
+
+      const listenerChannel = supabase.channel(channelTopic, {
+        config: {
+          presence: {
+            key: `listener-${myId}`,
+          },
+          broadcast: {
+            self: false,
+          },
+        },
+      })
+
+      const parsePresence = () => {
+        const state = listenerChannel.presenceState()
+        const members: ParticipantInfo[] = []
+
+        Object.values(state).forEach((presList: any) => {
+          if (!Array.isArray(presList)) return
+          presList.forEach((p: any) => {
+            // Filter out observer listeners so only real voice call participants are listed
+            if (p && p.identity && !p.identity.startsWith('listener-')) {
+              if (!members.some((m) => m.identity === p.identity)) {
+                members.push({
+                  identity: p.identity,
+                  name: p.name || 'Squad Member',
+                  avatarUrl: p.avatarUrl || null,
+                  isSpeaking: !!p.isSpeaking,
+                  isMuted: !!p.isMuted,
+                  isDeafened: !!p.isDeafened,
+                  isScreenSharing: !!p.isScreenSharing,
+                })
+              }
+            }
+          })
+        })
+
+        setServerVoiceMembers((prev) => ({
+          ...prev,
+          [vId]: members,
+        }))
+      }
+
+      listenerChannel
+        .on('presence', { event: 'sync' }, parsePresence)
+        .on('presence', { event: 'join' }, parsePresence)
+        .on('presence', { event: 'leave' }, parsePresence)
+        .on('broadcast', { event: 'voice_state' }, ({ payload }: any) => {
+          if (!payload || payload.channelId !== vId || !payload.identity) return
+
+          setServerVoiceMembers((prev) => {
+            const currentList = prev[vId] || []
+            if (payload.action === 'leave') {
+              return {
+                ...prev,
+                [vId]: currentList.filter((m) => m.identity !== payload.identity),
+              }
+            }
+            if (payload.action === 'join' || payload.action === 'update') {
+              const member: ParticipantInfo = {
+                identity: payload.identity,
+                name: payload.name || 'Squad Member',
+                avatarUrl: payload.avatarUrl || null,
+                isSpeaking: !!payload.isSpeaking,
+                isMuted: !!payload.isMuted,
+                isDeafened: !!payload.isDeafened,
+                isScreenSharing: !!payload.isScreenSharing,
+              }
+              const existingIdx = currentList.findIndex((m) => m.identity === payload.identity)
+              const nextList = [...currentList]
+              if (existingIdx >= 0) {
+                nextList[existingIdx] = member
+              } else {
+                nextList.push(member)
+              }
+              return {
+                ...prev,
+                [vId]: nextList,
+              }
+            }
+            return prev
+          })
+        })
+        .subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            parsePresence()
+          }
+        })
+
+      voiceChannelListenersRef.current.set(vId, listenerChannel)
+    }
+  }, [voiceChannelIds, connectedChannel?.id, user?.id])
+
+  useEffect(() => {
+    return () => {
+      voiceChannelListenersRef.current.forEach((listener) => {
+        try {
+          supabase.removeChannel(listener)
+        } catch (e) {}
+      })
+      voiceChannelListenersRef.current.clear()
+    }
+  }, [])
+
   // Instant broadcast on tab close or navigation away
   useEffect(() => {
     const handleUnload = () => {
       const channelId = connectedChannelRef.current?.id
       const id = myIdentityRef.current || user?.id
-      if (channelId && serverPresenceChannelRef.current && id) {
-        serverPresenceChannelRef.current.send({
-          type: 'broadcast',
-          event: 'voice_state',
-          payload: {
-            action: 'leave',
-            channelId,
-            identity: id,
-          },
-        })
-        serverPresenceChannelRef.current.untrack()
+      if (channelId && id) {
+        if (presenceChannelRef.current) {
+          try {
+            presenceChannelRef.current.send({
+              type: 'broadcast',
+              event: 'voice_state',
+              payload: {
+                action: 'leave',
+                channelId,
+                identity: id,
+              },
+            })
+            presenceChannelRef.current.untrack()
+          } catch (e) {}
+        }
+        if (serverPresenceChannelRef.current) {
+          try {
+            serverPresenceChannelRef.current.send({
+              type: 'broadcast',
+              event: 'voice_state',
+              payload: {
+                action: 'leave',
+                channelId,
+                identity: id,
+              },
+            })
+            serverPresenceChannelRef.current.untrack()
+          } catch (e) {}
+        }
       }
     }
 
@@ -846,6 +1048,15 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         presenceChannelRef.current = null
       }
 
+      // Also clean up any observer listener for this channel so the channel topic is free
+      if (voiceChannelListenersRef.current.has(channelId)) {
+        const existingListener = voiceChannelListenersRef.current.get(channelId)
+        try {
+          supabase.removeChannel(existingListener)
+        } catch (e) {}
+        voiceChannelListenersRef.current.delete(channelId)
+      }
+
       // Supabase Realtime Channel: Presence + Broadcast Signaling
       const presChannel = supabase.channel(`voice-channel-${channelId}`, {
         config: {
@@ -985,7 +1196,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             })
           })
 
-          setParticipants(Array.from(memberMap.values()))
+          const allMembers = Array.from(memberMap.values())
+          setParticipants(allMembers)
+          setServerVoiceMembers((prev) => ({
+            ...prev,
+            [channelId]: allMembers,
+          }))
         })
         .on('presence', { event: 'leave' }, ({ key }) => {
           // Clean up disconnected peer
@@ -1011,6 +1227,75 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             const next = { ...prev }
             delete next[key]
             return next
+          })
+
+          setServerVoiceMembers((prev) => {
+            const list = prev[channelId] || []
+            return {
+              ...prev,
+              [channelId]: list.filter((m) => m.identity !== key),
+            }
+          })
+        })
+        .on('broadcast', { event: 'voice_state' }, ({ payload }: any) => {
+          if (!payload || payload.channelId !== channelId || !payload.identity) return
+
+          setParticipants((prev) => {
+            if (payload.action === 'leave') {
+              return prev.filter((m) => m.identity !== payload.identity)
+            }
+            if (payload.action === 'join' || payload.action === 'update') {
+              const member: ParticipantInfo = {
+                identity: payload.identity,
+                name: payload.name || 'Squad Member',
+                avatarUrl: payload.avatarUrl || null,
+                isSpeaking: !!payload.isSpeaking,
+                isMuted: !!payload.isMuted,
+                isDeafened: !!payload.isDeafened,
+                isScreenSharing: !!payload.isScreenSharing,
+              }
+              const existingIdx = prev.findIndex((m) => m.identity === payload.identity)
+              if (existingIdx >= 0) {
+                const next = [...prev]
+                next[existingIdx] = member
+                return next
+              }
+              return [...prev, member]
+            }
+            return prev
+          })
+
+          setServerVoiceMembers((prev) => {
+            const currentList = prev[channelId] || []
+            if (payload.action === 'leave') {
+              return {
+                ...prev,
+                [channelId]: currentList.filter((m) => m.identity !== payload.identity),
+              }
+            }
+            if (payload.action === 'join' || payload.action === 'update') {
+              const member: ParticipantInfo = {
+                identity: payload.identity,
+                name: payload.name || 'Squad Member',
+                avatarUrl: payload.avatarUrl || null,
+                isSpeaking: !!payload.isSpeaking,
+                isMuted: !!payload.isMuted,
+                isDeafened: !!payload.isDeafened,
+                isScreenSharing: !!payload.isScreenSharing,
+              }
+              const existingIdx = currentList.findIndex((m) => m.identity === payload.identity)
+              const nextList = [...currentList]
+              if (existingIdx >= 0) {
+                nextList[existingIdx] = member
+              } else {
+                nextList.push(member)
+              }
+              return {
+                ...prev,
+                [channelId]: nextList,
+              }
+            }
+            return prev
           })
         })
         .subscribe(async (status) => {
@@ -1053,7 +1338,23 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         return next
       })
 
-      // Send instant 0ms broadcast to all other members on the server
+      // Send instant 0ms broadcast on both the dedicated voice channel topic AND server-wide channel
+      presChannel.send({
+        type: 'broadcast',
+        event: 'voice_state',
+        payload: {
+          action: 'join',
+          channelId,
+          identity: myId,
+          name: myName,
+          avatarUrl: myAvatar,
+          isSpeaking: false,
+          isMuted: isMutedRef.current,
+          isDeafened: isDeafenedRef.current,
+          isScreenSharing: false,
+        },
+      })
+
       serverPresenceChannelRef.current?.send({
         type: 'broadcast',
         event: 'voice_state',
@@ -1097,17 +1398,34 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     const leavingChannelId = connectedChannelRef.current?.id || connectedChannel?.id
     const myId = myIdentityRef.current || user?.id
 
-    // 1. Instant broadcast leave to all members on server (0ms latency!)
-    if (leavingChannelId && serverPresenceChannelRef.current && myId) {
-      serverPresenceChannelRef.current.send({
-        type: 'broadcast',
-        event: 'voice_state',
-        payload: {
-          action: 'leave',
-          channelId: leavingChannelId,
-          identity: myId,
-        },
-      })
+    // 1. Instant broadcast leave to all members on server and room (0ms latency!)
+    if (leavingChannelId && myId) {
+      if (presenceChannelRef.current) {
+        try {
+          presenceChannelRef.current.send({
+            type: 'broadcast',
+            event: 'voice_state',
+            payload: {
+              action: 'leave',
+              channelId: leavingChannelId,
+              identity: myId,
+            },
+          })
+        } catch (e) {}
+      }
+      if (serverPresenceChannelRef.current) {
+        try {
+          serverPresenceChannelRef.current.send({
+            type: 'broadcast',
+            event: 'voice_state',
+            payload: {
+              action: 'leave',
+              channelId: leavingChannelId,
+              identity: myId,
+            },
+          })
+        } catch (e) {}
+      }
     }
 
     // 2. Remove from local serverVoiceMembers state immediately (0ms latency!)
@@ -1226,6 +1544,24 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         isDeafened: isDeafenedRef.current,
         isScreenSharing,
       })
+
+      if (connectedChannel) {
+        presenceChannelRef.current.send({
+          type: 'broadcast',
+          event: 'voice_state',
+          payload: {
+            action: 'update',
+            channelId: connectedChannel.id,
+            identity: myIdentityRef.current,
+            name: myName,
+            avatarUrl: profile?.avatar_url || null,
+            isSpeaking: false,
+            isMuted: nextMute,
+            isDeafened: isDeafenedRef.current,
+            isScreenSharing: isScreenSharingRef.current,
+          },
+        })
+      }
     }
 
     if (serverPresenceChannelRef.current && connectedChannel) {
@@ -1299,6 +1635,24 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         isDeafened: nextDeaf,
         isScreenSharing,
       })
+
+      if (connectedChannel) {
+        presenceChannelRef.current.send({
+          type: 'broadcast',
+          event: 'voice_state',
+          payload: {
+            action: 'update',
+            channelId: connectedChannel.id,
+            identity: myIdentityRef.current,
+            name: myName,
+            avatarUrl: profile?.avatar_url || null,
+            isSpeaking: false,
+            isMuted: nextDeaf ? true : isMutedRef.current,
+            isDeafened: nextDeaf,
+            isScreenSharing: isScreenSharingRef.current,
+          },
+        })
+      }
     }
 
     if (serverPresenceChannelRef.current && connectedChannel) {
@@ -1610,6 +1964,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         participants,
         serverVoiceMembers,
         setVoiceServerId,
+        setVoiceChannelIds,
         ping,
         callDuration,
         channelStatus,

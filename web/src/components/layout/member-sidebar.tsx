@@ -32,7 +32,7 @@ export default function MemberSidebar({
   onSelectMember,
 }: MemberSidebarProps) {
   const { user, profile } = useAuth()
-  const { participants, isConnected } = useVoice()
+  const { participants, isConnected, serverVoiceMembers } = useVoice()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedMember, setSelectedMember] = useState<ServerMember | null>(null)
   const [serverDisplayName, setServerDisplayName] = useState<string>(serverName)
@@ -150,6 +150,21 @@ export default function MemberSidebar({
     }
   }, [serverId, fetchRealMembers, supabase])
 
+  // Combine active call participants with server-wide voice channel members
+  const allVoiceParticipants = useMemo(() => {
+    const list = [...participants]
+    Object.values(serverVoiceMembers).forEach((members) => {
+      if (Array.isArray(members)) {
+        members.forEach((m) => {
+          if (!list.some((existing) => existing.identity === m.identity)) {
+            list.push(m)
+          }
+        })
+      }
+    })
+    return list
+  }, [participants, serverVoiceMembers])
+
   // Compute live presence based on active user and voice participants
   const membersWithPresence = useMemo(() => {
     return dbMembers.map((member) => {
@@ -157,7 +172,7 @@ export default function MemberSidebar({
 
       // If this member is connected in voice comms
       const inVoice =
-        participants.some(
+        allVoiceParticipants.some(
           (p) =>
             p.identity === member.id ||
             p.name?.toLowerCase() === member.username.toLowerCase()
@@ -180,7 +195,7 @@ export default function MemberSidebar({
         customStatus,
       }
     })
-  }, [dbMembers, currentUserId, participants, isConnected])
+  }, [dbMembers, currentUserId, allVoiceParticipants, isConnected])
 
   // Filter by search query
   const filteredMembers = useMemo(() => {
