@@ -87,14 +87,8 @@ export default function SignupPage() {
     }
   }
 
-  const handleGoogleSignup = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/app`,
-      },
-    })
-    if (error) setError(error.message)
+  const handleGoogleSignup = () => {
+    // Google sign-up is not configured yet - intentionally does nothing
   }
 
   // 1. DEDICATED VERIFICATION NOTIFICATION SCREEN
