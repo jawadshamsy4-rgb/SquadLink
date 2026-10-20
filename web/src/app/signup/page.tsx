@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 
 export default function SignupPage() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
@@ -53,9 +55,23 @@ export default function SignupPage() {
       setError(signUpError.message)
       setLoading(false)
     } else {
-      setSuccess(true)
-      setResendCountdown(60)
-      setLoading(false)
+      // With mailer autoconfirm enabled, session is available immediately
+      if (data?.session) {
+        router.push('/app')
+      } else {
+        // Attempt immediate login with password
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        })
+        if (!signInErr) {
+          router.push('/app')
+        } else {
+          setSuccess(true)
+          setResendCountdown(60)
+          setLoading(false)
+        }
+      }
     }
   }
 

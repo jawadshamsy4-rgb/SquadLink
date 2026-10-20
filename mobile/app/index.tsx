@@ -28,13 +28,28 @@ export default function LoginScreen() {
     setLoading(true)
     try {
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { data: { username } },
         })
         if (error) throw error
-        Alert.alert('Success!', 'Check your email to verify your account.')
+
+        if (data?.session) {
+          await startMobilePresence()
+          await updateLocationNow()
+          router.replace('/home')
+        } else {
+          const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
+          if (signInErr) {
+            Alert.alert('Account Created!', 'Please sign in with your credentials.')
+            setIsSignUp(false)
+          } else {
+            await startMobilePresence()
+            await updateLocationNow()
+            router.replace('/home')
+          }
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
