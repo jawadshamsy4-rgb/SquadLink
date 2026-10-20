@@ -6,7 +6,9 @@ const { getWindowsLocation } = require('./get-location')
 const isDev = !app.isPackaged
 
 // Enable WebRTC features and allow autoplay without manual gesture
-app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer,WinSystemLocationProvider')
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer')
+}
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 // IPC handler for exact Windows hardware / Wi-Fi location
@@ -69,7 +71,7 @@ function createWindow() {
     try {
       const sources = await desktopCapturer.getSources({
         types: ['screen', 'window'],
-        thumbnailSize: { width: 0, height: 0 },
+        thumbnailSize: { width: 1, height: 1 },
       })
       if (sources && sources.length > 0) {
         const screenSource = sources.find((s) => s.id.startsWith('screen:')) || sources[0]
@@ -79,10 +81,22 @@ function createWindow() {
         }
         callback(response)
       } else {
-        callback(null)
+        const screenOnly = await desktopCapturer.getSources({ types: ['screen'] })
+        if (screenOnly && screenOnly.length > 0) {
+          callback({ video: screenOnly[0] })
+        } else {
+          callback(null)
+        }
       }
     } catch (e) {
       console.error('Desktop capturer error:', e)
+      try {
+        const fallback = await desktopCapturer.getSources({ types: ['screen'] })
+        if (fallback && fallback.length > 0) {
+          callback({ video: fallback[0] })
+          return
+        }
+      } catch (err2) {}
       callback(null)
     }
   }

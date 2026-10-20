@@ -1,8 +1,12 @@
 'use client'
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useAuth } from '@/components/providers/auth-provider'
-import { useVoice, ParticipantInfo } from '@/components/providers/voice-provider'
+import {
+  useVoice,
+  SCREEN_QUALITY_PRESETS,
+  type ScreenQualityPresetKey,
+} from '@/components/providers/voice-provider'
 
 interface VoiceChannelProps {
   channelId: string
@@ -19,6 +23,12 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
     isMuted,
     isDeafened,
     isScreenSharing,
+    isCameraOn,
+    cameraStream,
+    remoteCameraStreams,
+    toggleCamera,
+    screenQuality,
+    setScreenQuality,
     localSpeaking,
     participants,
     serverVoiceMembers,
@@ -35,6 +45,8 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
   } = useVoice()
 
   const videoContainerRef = useRef<HTMLVideoElement | null>(null)
+  const [isQualityMenuOpen, setIsQualityMenuOpen] = useState(false)
+  const [fullscreenElement, setFullscreenElement] = useState<Element | null>(null)
 
   useEffect(() => {
     if (serverId) {
@@ -45,6 +57,49 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
     }
   }, [serverId, channelId, setVoiceServerId, setVoiceChannelIds])
 
+  // Track Fullscreen state
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setFullscreenElement(document.fullscreenElement)
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+    }
+  }, [])
+
+  // Close quality dropdown when clicking outside
+  useEffect(() => {
+    if (!isQualityMenuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.stream-quality-dropdown') && !target.closest('.stream-quality-trigger')) {
+        setIsQualityMenuOpen(false)
+      }
+    }
+    window.addEventListener('click', handleClickOutside)
+    return () => window.removeEventListener('click', handleClickOutside)
+  }, [isQualityMenuOpen])
+
+  const toggleFullscreen = (el: HTMLElement | null) => {
+    if (!el) return
+    if (document.fullscreenElement) {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {})
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen()
+      }
+    } else {
+      if (el.requestFullscreen) {
+        el.requestFullscreen().catch(() => {})
+      } else if ((el as any).webkitRequestFullscreen) {
+        (el as any).webkitRequestFullscreen()
+      }
+    }
+  }
+
   const isConnectedToThisChannel = isConnected && connectedChannel?.id === channelId
   const roomMembers = isConnectedToThisChannel
     ? participants
@@ -54,7 +109,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
     if (videoContainerRef.current) {
       registerVideoContainer(videoContainerRef.current)
     }
-  }, [isScreenSharing])
+  }, [isScreenSharing, registerVideoContainer])
 
   const handleConnect = () => {
     connectVoice(channelId, channelName, undefined, serverId)
@@ -66,7 +121,10 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
     title: string
     stream: MediaStream
     isLocal: boolean
+    qualityLabel?: string
   }> = []
+
+  const currentPreset = SCREEN_QUALITY_PRESETS[screenQuality] || SCREEN_QUALITY_PRESETS['720p_30']
 
   if (isScreenSharing && screenStream) {
     activeStreams.push({
@@ -74,6 +132,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
       title: 'Your Screen (Live Stream)',
       stream: screenStream,
       isLocal: true,
+      qualityLabel: currentPreset.label,
     })
   }
 
@@ -82,16 +141,17 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
       if (info && info.stream) {
         activeStreams.push({
           id: peerId,
-          title: `${info.name || 'User'}'s Stream (Live 60 FPS)`,
+          title: `${info.name || 'User'}'s Stream`,
           stream: info.stream,
           isLocal: false,
+          qualityLabel: 'HD Live',
         })
       }
     })
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-slate-50 dark:bg-[#090c13] p-6 select-none overflow-y-auto transition-colors duration-200">
+    <div className="flex h-full w-full flex-col bg-slate-50 dark:bg-[#090c13] p-4 sm:p-6 select-none overflow-y-auto transition-colors duration-200">
       {/* Top Header */}
       <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-4">
         <div className="flex items-center gap-3">
@@ -126,98 +186,200 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
       {/* Screen Share Video Stream Containers */}
       {isConnectedToThisChannel && activeStreams.length > 0 && (
         <div className="mt-4 flex flex-col gap-4 w-full">
-          {activeStreams.map((share) => (
-            <div
-              key={share.id}
-              className="relative aspect-video w-full max-h-[500px] overflow-hidden rounded-3xl border border-purple-500/40 bg-black shadow-2xl"
-            >
-              <video
-                ref={(el) => {
-                  if (el && el.srcObject !== share.stream) {
-                    el.srcObject = share.stream
-                    el.play().catch(() => {})
-                  }
-                  if (share.isLocal) {
-                    registerVideoContainer(el)
-                  }
-                }}
-                autoPlay
-                playsInline
-                muted
-                className="h-full w-full object-contain"
-              />
-              <div className="absolute top-4 left-4 flex items-center gap-2 rounded-xl bg-purple-600/90 px-3 py-1.5 text-xs font-black text-white backdrop-blur-md shadow-lg">
-                <span className="h-2 w-2 rounded-full bg-red-400 animate-ping" />
-                <span>{share.title}</span>
+          {activeStreams.map((share) => {
+            const cardId = `screen-share-${share.id}`
+            return (
+              <div
+                key={share.id}
+                id={cardId}
+                className="group relative aspect-video w-full max-h-[560px] overflow-hidden rounded-3xl border border-purple-500/40 bg-black shadow-2xl flex items-center justify-center"
+              >
+                <video
+                  ref={(el) => {
+                    if (el && el.srcObject !== share.stream) {
+                      el.srcObject = share.stream
+                      el.play().catch(() => {})
+                    }
+                    if (share.isLocal) {
+                      registerVideoContainer(el)
+                    }
+                  }}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="h-full w-full object-contain"
+                />
+
+                {/* Top-left: Stream Info & Quality Tag */}
+                <div className="absolute top-3 sm:top-4 left-3 sm:left-4 flex items-center gap-2 rounded-xl bg-purple-600/90 px-3 py-1.5 text-xs font-black text-white backdrop-blur-md shadow-lg pointer-events-none">
+                  <span className="h-2 w-2 rounded-full bg-red-400 animate-ping" />
+                  <span>{share.title}</span>
+                  {share.qualityLabel && (
+                    <span className="rounded bg-black/40 px-1.5 py-0.5 text-[10px] font-mono font-bold text-purple-200">
+                      {share.qualityLabel}
+                    </span>
+                  )}
+                </div>
+
+                {/* Top-right: Controls (Fullscreen & Stop Stream) */}
+                <div className="absolute top-3 sm:top-4 right-3 sm:right-4 flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const card = document.getElementById(cardId)
+                      toggleFullscreen(card)
+                    }}
+                    className="flex items-center gap-1.5 rounded-xl bg-black/70 hover:bg-black/90 px-3 py-1.5 text-xs font-bold text-white backdrop-blur-md transition-colors cursor-pointer border border-white/10 shadow-lg"
+                    title="Toggle Fullscreen"
+                  >
+                    <span>{fullscreenElement?.id === cardId ? '⤦' : '⛶'}</span>
+                    <span className="hidden sm:inline">
+                      {fullscreenElement?.id === cardId ? 'Exit Fullscreen' : 'Fullscreen'}
+                    </span>
+                  </button>
+
+                  {share.isLocal && (
+                    <button
+                      onClick={() => toggleScreenShare(null)}
+                      className="rounded-xl bg-red-600/80 hover:bg-red-600 px-3 py-1.5 text-xs font-bold text-white transition-colors cursor-pointer shadow-lg backdrop-blur-md"
+                      title="Stop Streaming"
+                    >
+                      Stop Stream ✕
+                    </button>
+                  )}
+                </div>
               </div>
-              {share.isLocal && (
-                <button
-                  onClick={() => toggleScreenShare(null)}
-                  className="absolute top-4 right-4 rounded-xl bg-black/60 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-600 transition-colors cursor-pointer"
-                >
-                  Stop Stream ✕
-                </button>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
-      {/* Center Participants Grid */}
-      <div className="my-auto flex flex-1 flex-wrap items-center justify-center gap-6 p-6">
+      {/* Center Participants & Camera Feeds Grid */}
+      <div className="my-auto flex flex-1 flex-wrap items-center justify-center gap-4 sm:gap-6 p-4 sm:p-6">
         {isConnectedToThisChannel ? (
           participants.map((p, idx) => {
             const isLocal = idx === 0
             const isSpeakingNow = isLocal ? localSpeaking : p.isSpeaking
+            const hasCameraActive = isLocal ? isCameraOn : !!p.isCameraOn
+            const peerCameraInfo = !isLocal ? remoteCameraStreams[p.identity] : null
+            const streamToRender = isLocal ? cameraStream : peerCameraInfo?.stream
+            const camCardId = `cam-tile-${p.identity}`
 
             return (
               <div
                 key={p.identity}
-                className={`relative flex flex-col items-center justify-center rounded-3xl border transition-all duration-200 shadow-sm ${
+                id={camCardId}
+                className={`relative flex flex-col items-center justify-center rounded-3xl border transition-all duration-200 shadow-sm overflow-hidden ${
+                  hasCameraActive
+                    ? 'w-64 h-52 sm:w-72 sm:h-56 bg-black'
+                    : 'w-44 h-48 bg-white dark:bg-[#121620]'
+                } ${
                   isSpeakingNow
-                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 shadow-xl shadow-emerald-500/25 scale-105'
-                    : 'border-slate-200 dark:border-white/10 bg-white dark:bg-[#121620] hover:border-slate-300 dark:hover:border-white/20'
-                } w-44 h-48`}
+                    ? 'border-emerald-500 shadow-xl shadow-emerald-500/25 ring-2 ring-emerald-400'
+                    : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'
+                }`}
               >
-                {/* Live screen share indicator pill */}
-                {p.isScreenSharing && (
-                  <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-full bg-purple-600/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-md">
-                    <span>🖥️</span>
-                    <span>LIVE</span>
-                  </div>
-                )}
+                {/* When Camera is Active, render Live Video feed */}
+                {hasCameraActive ? (
+                  <div className="relative h-full w-full flex items-center justify-center bg-slate-950">
+                    {streamToRender ? (
+                      <video
+                        ref={(el) => {
+                          if (el && el.srcObject !== streamToRender) {
+                            el.srcObject = streamToRender
+                            el.play().catch(() => {})
+                          }
+                        }}
+                        autoPlay
+                        playsInline
+                        muted={isLocal}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                        <span className="text-3xl animate-pulse">📹</span>
+                        <span className="text-xs font-semibold">Connecting Camera...</span>
+                      </div>
+                    )}
 
-                {/* Avatar with dynamic neon green ring when speaking */}
-                <div
-                  className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-tr from-purple-600 to-cyan-500 text-2xl font-black text-white shadow-lg transition-all ${
-                    isSpeakingNow ? 'ring-4 ring-emerald-400 animate-pulse' : ''
-                  }`}
-                >
-                  {p?.avatarUrl ? (
-                    <img src={p.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
-                  ) : (
-                    (p?.name || 'User').slice(0, 2).toUpperCase()
-                  )}
-                  {(isLocal ? isMuted : p.isMuted) && (
-                    <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs text-white shadow-md">
-                      ✕
+                    {/* Camera Live Pill (Top-left) */}
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 rounded-full bg-teal-600/90 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-md backdrop-blur-md">
+                      <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                      <span>CAM</span>
                     </div>
-                  )}
-                </div>
 
-                <div className="mt-4 flex items-center justify-center max-w-[150px] truncate">
-                  <span className="font-bold text-slate-900 dark:text-white truncate text-sm">
-                    {p?.name || 'Squad Mate'} {isLocal && '(You)'}
-                  </span>
-                </div>
+                    {/* Camera Fullscreen Button (Top-right) */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const card = document.getElementById(camCardId)
+                        toggleFullscreen(card)
+                      }}
+                      className="absolute top-2.5 right-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 hover:bg-black/80 text-white text-xs font-bold transition-all backdrop-blur-md cursor-pointer border border-white/20 shadow-md"
+                      title="Fullscreen Camera Stream"
+                    >
+                      {fullscreenElement?.id === camCardId ? '⤦' : '⛶'}
+                    </button>
 
-                <span className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-gray-400">
-                  {(isLocal ? isMuted : p.isMuted)
-                    ? '🔇 Muted'
-                    : isSpeakingNow
-                    ? '🎙️ Speaking'
-                    : '🎧 Listening'}
-                </span>
+                    {/* Name Pill & Audio Indicator (Bottom-left) */}
+                    <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
+                      <div className="flex items-center gap-1.5 rounded-xl bg-black/70 px-2.5 py-1 text-xs font-bold text-white backdrop-blur-md shadow-md max-w-[80%] truncate">
+                        <span className="truncate">
+                          {p?.name || 'Squad Member'} {isLocal && '(You)'}
+                        </span>
+                      </div>
+
+                      {(isLocal ? isMuted : p.isMuted) && (
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-[10px] text-white shadow-md">
+                          🔇
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  /* Standard Voice Member Avatar Card */
+                  <>
+                    {/* Live Screen Share Indicator Pill */}
+                    {p.isScreenSharing && (
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-full bg-purple-600/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-md">
+                        <span>🖥️</span>
+                        <span>LIVE</span>
+                      </div>
+                    )}
+
+                    {/* Avatar with dynamic neon green ring when speaking */}
+                    <div
+                      className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-tr from-purple-600 to-cyan-500 text-2xl font-black text-white shadow-lg transition-all ${
+                        isSpeakingNow ? 'ring-4 ring-emerald-400 animate-pulse' : ''
+                      }`}
+                    >
+                      {p?.avatarUrl ? (
+                        <img src={p.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
+                      ) : (
+                        (p?.name || 'User').slice(0, 2).toUpperCase()
+                      )}
+                      {(isLocal ? isMuted : p.isMuted) && (
+                        <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs text-white shadow-md">
+                          ✕
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-center max-w-[150px] truncate">
+                      <span className="font-bold text-slate-900 dark:text-white truncate text-sm">
+                        {p?.name || 'Squad Mate'} {isLocal && '(You)'}
+                      </span>
+                    </div>
+
+                    <span className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-gray-400">
+                      {(isLocal ? isMuted : p.isMuted)
+                        ? '🔇 Muted'
+                        : isSpeakingNow
+                        ? '🎙️ Speaking'
+                        : '🎧 Listening'}
+                    </span>
+                  </>
+                )}
               </div>
             )
           })
@@ -236,13 +398,21 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
                         : 'border-slate-200 dark:border-white/10 bg-white dark:bg-[#121620] hover:border-slate-300 dark:hover:border-white/20'
                     } w-44 h-48`}
                   >
-                    {/* Live screen share indicator pill */}
-                    {p.isScreenSharing && (
-                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-full bg-purple-600/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-md">
-                        <span>🖥️</span>
-                        <span>LIVE</span>
-                      </div>
-                    )}
+                    {/* Live badges */}
+                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+                      {p.isScreenSharing && (
+                        <div className="flex items-center gap-1 rounded-full bg-purple-600/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-md">
+                          <span>🖥️</span>
+                          <span>LIVE</span>
+                        </div>
+                      )}
+                      {p.isCameraOn && (
+                        <div className="flex items-center gap-1 rounded-full bg-teal-600/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-md">
+                          <span>📹</span>
+                          <span>CAM</span>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Avatar with dynamic neon green ring when speaking */}
                     <div
@@ -301,7 +471,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
             </div>
             <h3 className="mt-4 text-xl font-black text-slate-900 dark:text-white">Join Voice Channel</h3>
             <p className="mt-1 text-sm text-slate-500 dark:text-gray-400 max-w-sm mx-auto">
-              No one is currently in this channel. Connect your microphone to chat with your squad and share gameplay in real time.
+              No one is currently in this channel. Connect your microphone to chat with your squad and stream video or gameplay in real time.
             </p>
             <button
               onClick={handleConnect}
@@ -314,13 +484,13 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
         )}
       </div>
 
-      {/* Control Dock (Mute, Deafen, Screen Share, Disconnect) */}
+      {/* Control Dock (Mute, Deafen, Camera, Screen Share + Quality Selector, Disconnect) */}
       {isConnectedToThisChannel && (
-        <div className="mt-auto flex flex-wrap items-center justify-center gap-2 sm:gap-4 rounded-3xl border border-slate-200 dark:border-white/10 bg-white/90 dark:bg-[#121622]/90 p-2.5 sm:p-3.5 backdrop-blur-xl shadow-2xl transition-colors duration-200">
+        <div className="mt-auto flex flex-wrap items-center justify-center gap-2 sm:gap-3 rounded-3xl border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#121622]/95 p-2 sm:p-3.5 backdrop-blur-xl shadow-2xl transition-colors duration-200">
           {/* Mute Mic Button */}
           <button
             onClick={toggleMute}
-            className={`flex items-center gap-1.5 sm:gap-2 rounded-2xl px-3.5 sm:px-5 py-2.5 sm:py-3 font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 sm:gap-2 rounded-2xl px-3 sm:px-4 py-2 sm:py-2.5 font-bold text-xs sm:text-sm transition-all cursor-pointer ${
               isMuted
                 ? 'bg-red-50 text-red-600 border border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/40 hover:bg-red-100 dark:hover:bg-red-500/30'
                 : 'bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20'
@@ -334,7 +504,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
           {/* Deafen Sound Button */}
           <button
             onClick={toggleDeafen}
-            className={`flex items-center gap-1.5 sm:gap-2 rounded-2xl px-3.5 sm:px-5 py-2.5 sm:py-3 font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 sm:gap-2 rounded-2xl px-3 sm:px-4 py-2 sm:py-2.5 font-bold text-xs sm:text-sm transition-all cursor-pointer ${
               isDeafened
                 ? 'bg-red-50 text-red-600 border border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/40 hover:bg-red-100 dark:hover:bg-red-500/30'
                 : 'bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20'
@@ -345,24 +515,113 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
             <span>{isDeafened ? 'Undeafen' : 'Deafen'}</span>
           </button>
 
-          {/* Screen Share / Stream Button */}
+          {/* Camera Video Stream Button */}
           <button
-            onClick={() => toggleScreenShare(videoContainerRef.current)}
-            className={`flex items-center gap-1.5 sm:gap-2 rounded-2xl px-4 sm:px-6 py-2.5 sm:py-3 font-bold text-xs sm:text-sm text-white shadow-lg transition-all cursor-pointer ${
-              isScreenSharing
-                ? 'bg-gradient-to-r from-purple-600 to-pink-600 ring-2 ring-purple-400 hover:opacity-90'
-                : 'bg-gradient-to-r from-purple-600 to-cyan-600 hover:opacity-90 active:scale-95'
+            onClick={toggleCamera}
+            className={`flex items-center gap-1.5 sm:gap-2 rounded-2xl px-3.5 sm:px-4.5 py-2 sm:py-2.5 font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-md ${
+              isCameraOn
+                ? 'bg-gradient-to-r from-teal-500 to-emerald-600 text-white ring-2 ring-emerald-400 hover:opacity-90'
+                : 'bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-white/10 dark:text-white dark:hover:bg-white/20'
             }`}
-            title="Share Screen or Application"
+            title="Turn camera video stream on/off"
           >
-            <span>🖥️</span>
-            <span>{isScreenSharing ? 'Stop Screen' : 'Share Screen'}</span>
+            <span>📹</span>
+            <span>{isCameraOn ? 'Turn Off Cam' : 'Camera'}</span>
           </button>
+
+          {/* Screen Share + Resolution/FPS Quality Selector */}
+          <div className="relative flex items-center">
+            <button
+              onClick={() => toggleScreenShare(videoContainerRef.current)}
+              className={`flex items-center gap-1.5 sm:gap-2 rounded-l-2xl px-3.5 sm:px-4.5 py-2 sm:py-2.5 font-bold text-xs sm:text-sm text-white shadow-lg transition-all cursor-pointer ${
+                isScreenSharing
+                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 ring-2 ring-purple-400 hover:opacity-90'
+                  : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-90 active:scale-95'
+              }`}
+              title="Share Screen (Discrete Screen Capture - No Camera Fallback)"
+            >
+              <span>🖥️</span>
+              <span>{isScreenSharing ? 'Stop Screen' : 'Share Screen'}</span>
+            </button>
+
+            {/* Quality Preset Trigger */}
+            <button
+              onClick={() => setIsQualityMenuOpen((prev) => !prev)}
+              className="stream-quality-trigger flex items-center gap-1 rounded-r-2xl border-l border-white/20 bg-indigo-700 hover:bg-indigo-800 px-2 sm:px-2.5 py-2 sm:py-2.5 text-xs font-bold text-white cursor-pointer transition-colors shadow-lg"
+              title="Change Stream Resolution and FPS"
+            >
+              <span className="font-mono text-[11px]">
+                {SCREEN_QUALITY_PRESETS[screenQuality]?.label.split(' ')[0] || '720p'}
+              </span>
+              <span className="text-[10px]">⚙️</span>
+            </button>
+
+            {/* Quality Preset Popover Menu */}
+            {isQualityMenuOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="stream-quality-dropdown absolute bottom-14 right-0 z-50 w-72 rounded-2xl border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#121624]/95 p-3 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150"
+              >
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-white/10 mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">
+                      Stream Quality
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold text-purple-500 dark:text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full">
+                    {SCREEN_QUALITY_PRESETS[screenQuality]?.label}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {(Object.keys(SCREEN_QUALITY_PRESETS) as ScreenQualityPresetKey[]).map((key) => {
+                    const preset = SCREEN_QUALITY_PRESETS[key]
+                    const isSelected = screenQuality === key
+
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => {
+                          setScreenQuality(key)
+                          setIsQualityMenuOpen(false)
+                        }}
+                        className={`flex w-full flex-col text-left rounded-xl p-2 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-purple-600 text-white font-bold shadow-md'
+                            : 'text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold">{preset.label}</span>
+                          {key === '720p_30' && (
+                            <span
+                              className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                                isSelected ? 'bg-purple-700 text-white' : 'bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-gray-300'
+                              }`}
+                            >
+                              Default
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className={`text-[10px] mt-0.5 ${
+                            isSelected ? 'text-purple-100' : 'text-slate-400 dark:text-gray-500'
+                          }`}
+                        >
+                          {preset.desc}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Disconnect Button */}
           <button
             onClick={disconnectVoice}
-            className="flex items-center gap-1.5 sm:gap-2 rounded-2xl bg-red-600 px-4 sm:px-6 py-2.5 sm:py-3 font-black text-xs sm:text-sm text-white shadow-lg shadow-red-600/30 hover:bg-red-700 active:scale-95 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 sm:gap-2 rounded-2xl bg-red-600 px-3.5 sm:px-5 py-2 sm:py-2.5 font-black text-xs sm:text-sm text-white shadow-lg shadow-red-600/30 hover:bg-red-700 active:scale-95 transition-all cursor-pointer"
             title="Leave Voice Channel"
           >
             <span>📞</span>

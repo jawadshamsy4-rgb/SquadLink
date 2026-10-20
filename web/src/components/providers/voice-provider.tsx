@@ -26,6 +26,61 @@ export interface ParticipantInfo {
   isMuted: boolean
   isDeafened?: boolean
   isScreenSharing: boolean
+  isCameraOn?: boolean
+}
+
+export type ScreenQualityPresetKey = '720p_30' | '720p_60' | '1080p_30' | '1080p_60' | '480p_30'
+
+export interface ScreenQualityPreset {
+  key: ScreenQualityPresetKey
+  label: string
+  width: number
+  height: number
+  fps: number
+  desc: string
+}
+
+export const SCREEN_QUALITY_PRESETS: Record<ScreenQualityPresetKey, ScreenQualityPreset> = {
+  '720p_30': {
+    key: '720p_30',
+    label: '720p 30 FPS',
+    width: 1280,
+    height: 720,
+    fps: 30,
+    desc: 'Default (Balanced & Low Latency)',
+  },
+  '720p_60': {
+    key: '720p_60',
+    label: '720p 60 FPS',
+    width: 1280,
+    height: 720,
+    fps: 60,
+    desc: 'Smooth Gaming',
+  },
+  '1080p_30': {
+    key: '1080p_30',
+    label: '1080p 30 FPS',
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    desc: 'High Definition',
+  },
+  '1080p_60': {
+    key: '1080p_60',
+    label: '1080p 60 FPS',
+    width: 1920,
+    height: 1080,
+    fps: 60,
+    desc: 'Ultra Smooth Pro Gaming',
+  },
+  '480p_30': {
+    key: '480p_30',
+    label: '480p 30 FPS',
+    width: 854,
+    height: 480,
+    fps: 30,
+    desc: 'Eco / Data Saver',
+  },
 }
 
 export interface ConnectedChannelInfo {
@@ -40,6 +95,12 @@ export interface RemoteScreenStreamInfo {
   stream: MediaStream
 }
 
+export interface RemoteCameraStreamInfo {
+  name: string
+  avatarUrl?: string | null
+  stream: MediaStream
+}
+
 interface VoiceContextType {
   connectedChannel: ConnectedChannelInfo | null
   isConnected: boolean
@@ -47,6 +108,12 @@ interface VoiceContextType {
   isMuted: boolean
   isDeafened: boolean
   isScreenSharing: boolean
+  isCameraOn: boolean
+  cameraStream: MediaStream | null
+  remoteCameraStreams: Record<string, RemoteCameraStreamInfo>
+  toggleCamera: () => Promise<void>
+  screenQuality: ScreenQualityPresetKey
+  setScreenQuality: (preset: ScreenQualityPresetKey) => void
   localSpeaking: boolean
   participants: ParticipantInfo[]
   serverVoiceMembers: Record<string, ParticipantInfo[]>
@@ -84,6 +151,12 @@ const VoiceContext = createContext<VoiceContextType>({
   isMuted: false,
   isDeafened: false,
   isScreenSharing: false,
+  isCameraOn: false,
+  cameraStream: null,
+  remoteCameraStreams: {},
+  toggleCamera: async () => {},
+  screenQuality: '720p_30',
+  setScreenQuality: () => {},
   localSpeaking: false,
   participants: [],
   serverVoiceMembers: {},
@@ -137,6 +210,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [isMuted, setIsMuted] = useState(false)
   const [isDeafened, setIsDeafened] = useState(false)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [isCameraOn, setIsCameraOn] = useState(false)
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+  const [remoteCameraStreams, setRemoteCameraStreams] = useState<Record<string, RemoteCameraStreamInfo>>({})
+  const [screenQuality, setScreenQualityState] = useState<ScreenQualityPresetKey>('720p_30')
   const [localSpeaking, setLocalSpeaking] = useState(false)
   const [participants, setParticipants] = useState<ParticipantInfo[]>([])
   const [ping, setPing] = useState(24)
@@ -145,6 +222,25 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const [connectedAt, setConnectedAt] = useState<number | null>(null)
   const [callDuration, setCallDuration] = useState('00:00')
   const [channelStatus, setChannelStatus] = useState('Set a channel status')
+
+  // Load screen quality preset from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('squadlink_screen_quality_preset') as ScreenQualityPresetKey
+      if (saved && SCREEN_QUALITY_PRESETS[saved]) {
+        setScreenQualityState(saved)
+        screenQualityRef.current = saved
+      }
+    } catch {}
+  }, [])
+
+  const setScreenQuality = useCallback((preset: ScreenQualityPresetKey) => {
+    setScreenQualityState(preset)
+    screenQualityRef.current = preset
+    try {
+      localStorage.setItem('squadlink_screen_quality_preset', preset)
+    } catch {}
+  }, [])
 
   // Advanced Voice Processing States (default true)
   const [echoCancellation, setEchoCancellationState] = useState(true)
@@ -157,6 +253,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
   const localStreamRef = useRef<MediaStream | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
   const videoContainerRef = useRef<HTMLVideoElement | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -171,6 +268,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
   const isMutedRef = useRef(false)
   const serverPresenceChannelRef = useRef<any>(null)
   const isScreenSharingRef = useRef(false)
+  const isCameraOnRef = useRef(false)
+  const screenQualityRef = useRef<ScreenQualityPresetKey>('720p_30')
+  const streamTypeByStreamId = useRef<Map<string, 'screen' | 'camera'>>(new Map())
+  const streamTypeByPeerId = useRef<Map<string, 'screen' | 'camera'>>(new Map())
   const myIdentityRef = useRef<string>('')
   const participantsRef = useRef<ParticipantInfo[]>([])
 
@@ -835,6 +936,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       })
     }
 
+    // Add local camera video tracks if active
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => {
+        pc.addTrack(track, cameraStreamRef.current!)
+      })
+    }
+
+    // Ensure bidirectional video transceivers are pre-allocated for instant video display
+    try {
+      if (!screenStreamRef.current && !cameraStreamRef.current) {
+        pc.addTransceiver('video', { direction: 'recvonly' })
+      }
+    } catch (e) {}
+
     // ICE Candidate Exchange
     pc.onicecandidate = (event) => {
       if (event.candidate && presenceChannelRef.current) {
@@ -844,6 +959,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           payload: {
             type: 'candidate',
             from: myIdentityRef.current,
+            fromName: profile?.username || user?.user_metadata?.username || 'Shamsy',
             to: targetPeerId,
             candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate,
           },
@@ -885,20 +1001,47 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         const peerObj = participantsRef.current.find((p) => p.identity === targetPeerId)
         const peerDisplayName = peerObj?.name || targetPeerName || 'Squad Member'
 
-        setRemoteScreenStreams((prev) => ({
-          ...prev,
-          [targetPeerId]: {
-            name: peerDisplayName,
-            stream,
-          },
-        }))
+        // Determine if stream is camera or screen share
+        const typeFromStream = streamTypeByStreamId.current.get(stream.id)
+        const typeFromPeer = streamTypeByPeerId.current.get(targetPeerId)
+        const isCam =
+          typeFromStream === 'camera' ||
+          typeFromPeer === 'camera' ||
+          (peerObj?.isCameraOn && !peerObj?.isScreenSharing)
 
-        event.track.onended = () => {
-          setRemoteScreenStreams((prev) => {
-            const next = { ...prev }
-            delete next[targetPeerId]
-            return next
-          })
+        if (isCam) {
+          setRemoteCameraStreams((prev) => ({
+            ...prev,
+            [targetPeerId]: {
+              name: peerDisplayName,
+              avatarUrl: peerObj?.avatarUrl || null,
+              stream,
+            },
+          }))
+
+          event.track.onended = () => {
+            setRemoteCameraStreams((prev) => {
+              const next = { ...prev }
+              delete next[targetPeerId]
+              return next
+            })
+          }
+        } else {
+          setRemoteScreenStreams((prev) => ({
+            ...prev,
+            [targetPeerId]: {
+              name: peerDisplayName,
+              stream,
+            },
+          }))
+
+          event.track.onended = () => {
+            setRemoteScreenStreams((prev) => {
+              const next = { ...prev }
+              delete next[targetPeerId]
+              return next
+            })
+          }
         }
       }
     }
@@ -1071,12 +1214,32 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       // Handle WebRTC Broadcast Signals
       presChannel.on('broadcast', { event: 'voice-signal' }, async ({ payload }: any) => {
-        if (!payload || payload.to !== myId) return
+        if (!payload) return
+        if (payload.to && payload.to !== myId) return
 
         const fromPeerId = payload.from
         const fromPeerName = payload.fromName
 
-        if (payload.type === 'offer') {
+        if (payload.type === 'stream-meta') {
+          if (payload.streamId && payload.streamType) {
+            streamTypeByStreamId.current.set(payload.streamId, payload.streamType)
+          }
+          if (payload.from && payload.streamType) {
+            streamTypeByPeerId.current.set(payload.from, payload.streamType)
+          }
+        } else if (payload.type === 'screen-ended') {
+          setRemoteScreenStreams((prev) => {
+            const next = { ...prev }
+            delete next[fromPeerId]
+            return next
+          })
+        } else if (payload.type === 'camera-ended') {
+          setRemoteCameraStreams((prev) => {
+            const next = { ...prev }
+            delete next[fromPeerId]
+            return next
+          })
+        } else if (payload.type === 'offer') {
           const pc = getOrCreatePeerConnection(fromPeerId, fromPeerName)
 
           // Perfect negotiation glare handling
@@ -1140,12 +1303,6 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             list.push(payload.candidate)
             queuedCandidatesRef.current.set(fromPeerId, list)
           }
-        } else if (payload.type === 'screen-ended') {
-          setRemoteScreenStreams((prev) => {
-            const next = { ...prev }
-            delete next[fromPeerId]
-            return next
-          })
         }
       })
 
@@ -1167,6 +1324,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                   isMuted: p.identity === localParticipant.identity ? isMutedRef.current : !!p.isMuted,
                   isDeafened: p.identity === localParticipant.identity ? isDeafenedRef.current : !!p.isDeafened,
                   isScreenSharing: p.identity === localParticipant.identity ? isScreenSharing : !!p.isScreenSharing,
+                  isCameraOn: p.identity === localParticipant.identity ? isCameraOn : !!p.isCameraOn,
                 })
 
                 // If remote peer exists and deterministic pair initiator (myId < peerId):
@@ -1228,6 +1386,11 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             delete next[key]
             return next
           })
+          setRemoteCameraStreams((prev) => {
+            const next = { ...prev }
+            delete next[key]
+            return next
+          })
 
           setServerVoiceMembers((prev) => {
             const list = prev[channelId] || []
@@ -1253,6 +1416,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 isMuted: !!payload.isMuted,
                 isDeafened: !!payload.isDeafened,
                 isScreenSharing: !!payload.isScreenSharing,
+                isCameraOn: !!payload.isCameraOn,
               }
               const existingIdx = prev.findIndex((m) => m.identity === payload.identity)
               if (existingIdx >= 0) {
@@ -1282,6 +1446,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 isMuted: !!payload.isMuted,
                 isDeafened: !!payload.isDeafened,
                 isScreenSharing: !!payload.isScreenSharing,
+                isCameraOn: !!payload.isCameraOn,
               }
               const existingIdx = currentList.findIndex((m) => m.identity === payload.identity)
               const nextList = [...currentList]
@@ -1473,6 +1638,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     remoteAudiosRef.current.clear()
     queuedCandidatesRef.current.clear()
     setRemoteScreenStreams({})
+    setRemoteCameraStreams({})
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop())
@@ -1484,6 +1650,14 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       screenStreamRef.current = null
       setScreenStream(null)
     }
+
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop())
+      cameraStreamRef.current = null
+      setCameraStream(null)
+    }
+    setIsCameraOn(false)
+    isCameraOnRef.current = false
 
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {})
@@ -1542,7 +1716,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         isSpeaking: false,
         isMuted: nextMute,
         isDeafened: isDeafenedRef.current,
-        isScreenSharing,
+        isScreenSharing: isScreenSharingRef.current,
+        isCameraOn: isCameraOnRef.current,
       })
 
       if (connectedChannel) {
@@ -1559,6 +1734,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             isMuted: nextMute,
             isDeafened: isDeafenedRef.current,
             isScreenSharing: isScreenSharingRef.current,
+            isCameraOn: isCameraOnRef.current,
           },
         })
       }
@@ -1578,6 +1754,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           isMuted: nextMute,
           isDeafened: isDeafenedRef.current,
           isScreenSharing: isScreenSharingRef.current,
+          isCameraOn: isCameraOnRef.current,
         },
       })
       serverPresenceChannelRef.current.track({
@@ -1589,6 +1766,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         isMuted: nextMute,
         isDeafened: isDeafenedRef.current,
         isScreenSharing: isScreenSharingRef.current,
+        isCameraOn: isCameraOnRef.current,
       }).catch(() => {})
     }
 
@@ -1633,7 +1811,8 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         isSpeaking: false,
         isMuted: nextDeaf ? true : isMutedRef.current,
         isDeafened: nextDeaf,
-        isScreenSharing,
+        isScreenSharing: isScreenSharingRef.current,
+        isCameraOn: isCameraOnRef.current,
       })
 
       if (connectedChannel) {
@@ -1650,6 +1829,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             isMuted: nextDeaf ? true : isMutedRef.current,
             isDeafened: nextDeaf,
             isScreenSharing: isScreenSharingRef.current,
+            isCameraOn: isCameraOnRef.current,
           },
         })
       }
@@ -1669,6 +1849,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           isMuted: nextDeaf ? true : isMutedRef.current,
           isDeafened: nextDeaf,
           isScreenSharing: isScreenSharingRef.current,
+          isCameraOn: isCameraOnRef.current,
         },
       })
       serverPresenceChannelRef.current.track({
@@ -1680,6 +1861,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         isMuted: nextDeaf ? true : isMutedRef.current,
         isDeafened: nextDeaf,
         isScreenSharing: isScreenSharingRef.current,
+        isCameraOn: isCameraOnRef.current,
       }).catch(() => {})
     }
 
@@ -1692,12 +1874,201 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     )
   }
 
+  const updateMediaPresence = (sharingScreen: boolean, cameraActive: boolean) => {
+    isScreenSharingRef.current = sharingScreen
+    isCameraOnRef.current = cameraActive
+    const myName = profile?.username || user?.user_metadata?.username || 'User'
+    const avatar = profile?.avatar_url || null
+
+    if (presenceChannelRef.current) {
+      presenceChannelRef.current.track({
+        identity: myIdentityRef.current,
+        name: myName,
+        avatarUrl: avatar,
+        isSpeaking: localSpeaking,
+        isMuted: isMutedRef.current,
+        isDeafened: isDeafenedRef.current,
+        isScreenSharing: sharingScreen,
+        isCameraOn: cameraActive,
+      }).catch(() => {})
+    }
+
+    if (serverPresenceChannelRef.current && connectedChannel) {
+      serverPresenceChannelRef.current.send({
+        type: 'broadcast',
+        event: 'voice_state',
+        payload: {
+          action: 'update',
+          channelId: connectedChannel.id,
+          identity: myIdentityRef.current,
+          name: myName,
+          avatarUrl: avatar,
+          isSpeaking: localSpeaking,
+          isMuted: isMutedRef.current,
+          isDeafened: isDeafenedRef.current,
+          isScreenSharing: sharingScreen,
+          isCameraOn: cameraActive,
+        },
+      }).catch(() => {})
+
+      serverPresenceChannelRef.current.track({
+        identity: myIdentityRef.current,
+        channelId: connectedChannel.id,
+        name: myName,
+        avatarUrl: avatar,
+        isSpeaking: localSpeaking,
+        isMuted: isMutedRef.current,
+        isDeafened: isDeafenedRef.current,
+        isScreenSharing: sharingScreen,
+        isCameraOn: cameraActive,
+      }).catch(() => {})
+    }
+  }
+
+  const toggleCamera = async () => {
+    try {
+      if (isCameraOn) {
+        // Stop Camera
+        const currentStream = cameraStreamRef.current
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => track.stop())
+          cameraStreamRef.current = null
+          setCameraStream(null)
+        }
+        setIsCameraOn(false)
+        isCameraOnRef.current = false
+
+        // Remove camera tracks from active peer connections & renegotiate
+        peerConnectionsRef.current.forEach(async (pc, peerId) => {
+          const senders = pc.getSenders().filter((s) => s.track && s.track.kind === 'video')
+          senders.forEach((s) => {
+            if (s.track && currentStream?.getTracks().includes(s.track)) {
+              try { pc.removeTrack(s) } catch (e) {}
+            }
+          })
+          try {
+            const offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
+            presenceChannelRef.current?.send({
+              type: 'broadcast',
+              event: 'voice-signal',
+              payload: {
+                type: 'offer',
+                from: myIdentityRef.current,
+                fromName: profile?.username || user?.user_metadata?.username || 'Shamsy',
+                to: peerId,
+                sdp: offer,
+              },
+            })
+          } catch (e) {}
+        })
+
+        presenceChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'voice-signal',
+          payload: {
+            type: 'camera-ended',
+            from: myIdentityRef.current,
+          },
+        })
+
+        updateMediaPresence(isScreenSharingRef.current, false)
+
+        setParticipants((prev) =>
+          prev.map((p, idx) => (idx === 0 ? { ...p, isCameraOn: false } : p))
+        )
+      } else {
+        // Start Camera
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          alert('Camera video streaming is not supported on this device or browser.')
+          return
+        }
+
+        let stream: MediaStream | null = null
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'user',
+              width: { ideal: 1280, max: 1280 },
+              height: { ideal: 720, max: 720 },
+              frameRate: { ideal: 30, max: 30 },
+            },
+            audio: false,
+          })
+        } catch (camErr: any) {
+          console.warn('Camera stream error:', camErr.message)
+          alert('Camera access was denied or camera hardware is busy.')
+          return
+        }
+
+        if (!stream) return
+
+        cameraStreamRef.current = stream
+        setCameraStream(stream)
+        setIsCameraOn(true)
+        isCameraOnRef.current = true
+
+        const camTrack = stream.getVideoTracks()[0]
+        if (camTrack) {
+          camTrack.onended = () => {
+            toggleCamera()
+          }
+        }
+
+        // Inform peers that this stream is Camera
+        presenceChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'voice-signal',
+          payload: {
+            type: 'stream-meta',
+            streamType: 'camera',
+            streamId: stream.id,
+            from: myIdentityRef.current,
+          },
+        })
+
+        // Add camera track to all active peer connections
+        peerConnectionsRef.current.forEach(async (pc, peerId) => {
+          pc.addTrack(camTrack, stream!)
+          try {
+            const offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
+            presenceChannelRef.current?.send({
+              type: 'broadcast',
+              event: 'voice-signal',
+              payload: {
+                type: 'offer',
+                from: myIdentityRef.current,
+                fromName: profile?.username || user?.user_metadata?.username || 'Shamsy',
+                to: peerId,
+                sdp: offer,
+              },
+            })
+          } catch (e) {
+            console.warn('Camera renegotiation warning:', e)
+          }
+        })
+
+        updateMediaPresence(isScreenSharingRef.current, true)
+
+        setParticipants((prev) =>
+          prev.map((p, idx) => (idx === 0 ? { ...p, isCameraOn: true } : p))
+        )
+      }
+    } catch (err: any) {
+      console.warn('toggleCamera error:', err.message)
+      setIsCameraOn(false)
+      setCameraStream(null)
+    }
+  }
+
   const toggleScreenShare = async (videoEl?: HTMLVideoElement | null) => {
     try {
       if (isScreenSharing) {
         // Stop screen share
-        if (screenStreamRef.current) {
-          screenStreamRef.current.getTracks().forEach((track) => track.stop())
+        const currentStream = screenStreamRef.current
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => track.stop())
           screenStreamRef.current = null
           setScreenStream(null)
         }
@@ -1705,27 +2076,31 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           videoContainerRef.current.srcObject = null
         }
         setIsScreenSharing(false)
+        isScreenSharingRef.current = false
 
-        // Remove video tracks from active peer connections & renegotiate
+        // Remove screen video tracks from active peer connections & renegotiate
         peerConnectionsRef.current.forEach(async (pc, peerId) => {
-          const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
-          if (sender) {
-            try {
-              pc.removeTrack(sender)
-              const offer = await pc.createOffer()
-              await pc.setLocalDescription(offer)
-              presenceChannelRef.current?.send({
-                type: 'broadcast',
-                event: 'voice-signal',
-                payload: {
-                  type: 'offer',
-                  from: myIdentityRef.current,
-                  to: peerId,
-                  sdp: offer,
-                },
-              })
-            } catch (e) {}
-          }
+          const senders = pc.getSenders().filter((s) => s.track && s.track.kind === 'video')
+          senders.forEach((s) => {
+            if (s.track && currentStream?.getTracks().includes(s.track)) {
+              try { pc.removeTrack(s) } catch (e) {}
+            }
+          })
+          try {
+            const offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
+            presenceChannelRef.current?.send({
+              type: 'broadcast',
+              event: 'voice-signal',
+              payload: {
+                type: 'offer',
+                from: myIdentityRef.current,
+                fromName: profile?.username || user?.user_metadata?.username || 'Shamsy',
+                to: peerId,
+                sdp: offer,
+              },
+            })
+          } catch (e) {}
         })
 
         presenceChannelRef.current?.send({
@@ -1737,94 +2112,65 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           },
         })
 
-        if (presenceChannelRef.current) {
-          const myName = profile?.username || user?.user_metadata?.username || 'Shamsy'
-          presenceChannelRef.current.track({
-            identity: myIdentityRef.current,
-            name: myName,
-            avatarUrl: profile?.avatar_url || null,
-            isSpeaking: localSpeaking,
-            isMuted: isMutedRef.current,
-            isDeafened: isDeafenedRef.current,
-            isScreenSharing: false,
-          })
-        }
-
-        if (serverPresenceChannelRef.current && connectedChannel) {
-          serverPresenceChannelRef.current.send({
-            type: 'broadcast',
-            event: 'voice_state',
-            payload: {
-              action: 'update',
-              channelId: connectedChannel.id,
-              identity: myIdentityRef.current,
-              name: profile?.username || user?.user_metadata?.username || 'Shamsy',
-              avatarUrl: profile?.avatar_url || null,
-              isSpeaking: localSpeaking,
-              isMuted: isMutedRef.current,
-              isDeafened: isDeafenedRef.current,
-              isScreenSharing: false,
-            },
-          })
-          serverPresenceChannelRef.current.track({
-            identity: myIdentityRef.current,
-            channelId: connectedChannel.id,
-            name: profile?.username || user?.user_metadata?.username || 'Shamsy',
-            avatarUrl: profile?.avatar_url || null,
-            isSpeaking: localSpeaking,
-            isMuted: isMutedRef.current,
-            isDeafened: isDeafenedRef.current,
-            isScreenSharing: false,
-          }).catch(() => {})
-        }
+        updateMediaPresence(false, isCameraOnRef.current)
 
         setParticipants((prev) =>
           prev.map((p, idx) => (idx === 0 ? { ...p, isScreenSharing: false } : p))
         )
       } else {
+        // Start screen share
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+          alert(
+            'Screen sharing is not supported by your mobile browser. To stream live video from your phone, please use the Camera Video Stream button.'
+          )
+          return
+        }
+
+        const presetKey = screenQualityRef.current || '720p_30'
+        const preset = SCREEN_QUALITY_PRESETS[presetKey] || SCREEN_QUALITY_PRESETS['720p_30']
+
         let stream: MediaStream | null = null
 
-        // 1. Try getDisplayMedia (Desktop / PC / supported browsers)
-        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        try {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+              width: { ideal: preset.width },
+              height: { ideal: preset.height },
+              frameRate: { ideal: preset.fps, max: preset.fps },
+            },
+            audio: true,
+          })
+        } catch (audioErr: any) {
+          console.warn('Screen share with audio unavailable, trying video only:', audioErr.message)
           try {
             stream = await navigator.mediaDevices.getDisplayMedia({
-              video: true,
-              audio: true,
+              video: {
+                width: { ideal: preset.width },
+                height: { ideal: preset.height },
+                frameRate: { ideal: preset.fps, max: preset.fps },
+              },
+              audio: false,
             })
-          } catch (audioErr: any) {
-            console.warn('Screen share with audio unavailable, trying video only:', audioErr.message)
+          } catch (videoErr: any) {
+            console.warn('Constrained display media failed, trying standard video capture:', videoErr.message)
             try {
               stream = await navigator.mediaDevices.getDisplayMedia({
                 video: true,
                 audio: false,
               })
-            } catch (videoErr: any) {
-              console.warn('getDisplayMedia failed or denied on this device:', videoErr.message)
+            } catch (finalErr: any) {
+              console.warn('getDisplayMedia failed or denied on this device:', finalErr.message)
+              return
             }
           }
-        }
-
-        // 2. Fallback to Camera / Video Stream (Mobile / Android WebView)
-        if (!stream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-              audio: false,
-            })
-          } catch (camErr: any) {
-            console.warn('Camera stream fallback failed:', camErr.message)
-          }
-        }
-
-        if (!stream) {
-          alert('Screen sharing or video stream is unavailable or permission was cancelled.')
-          return
         }
 
         if (!stream) return
 
         screenStreamRef.current = stream
         setScreenStream(stream)
+        setIsScreenSharing(true)
+        isScreenSharingRef.current = true
 
         const targetVideo = videoEl || videoContainerRef.current
         if (targetVideo) {
@@ -1832,16 +2178,27 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         }
 
         const videoTrack = stream.getVideoTracks()[0]
+        if (videoTrack) {
+          videoTrack.onended = () => {
+            toggleScreenShare(videoContainerRef.current)
+          }
+        }
+
+        // Inform peers that this stream is Screen Share
+        presenceChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'voice-signal',
+          payload: {
+            type: 'stream-meta',
+            streamType: 'screen',
+            streamId: stream.id,
+            from: myIdentityRef.current,
+          },
+        })
 
         // Add track to all existing peer connections and renegotiate
         peerConnectionsRef.current.forEach(async (pc, peerId) => {
-          const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
-          if (sender) {
-            await sender.replaceTrack(videoTrack)
-          } else {
-            pc.addTrack(videoTrack, stream)
-          }
-
+          pc.addTrack(videoTrack, stream!)
           try {
             const offer = await pc.createOffer()
             await pc.setLocalDescription(offer)
@@ -1851,6 +2208,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               payload: {
                 type: 'offer',
                 from: myIdentityRef.current,
+                fromName: profile?.username || user?.user_metadata?.username || 'Shamsy',
                 to: peerId,
                 sdp: offer,
               },
@@ -1860,52 +2218,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           }
         })
 
-        videoTrack.onended = () => {
-          toggleScreenShare(videoContainerRef.current)
-        }
-
-        setIsScreenSharing(true)
-
-        if (presenceChannelRef.current) {
-          const myName = profile?.username || user?.user_metadata?.username || 'Shamsy'
-          presenceChannelRef.current.track({
-            identity: myIdentityRef.current,
-            name: myName,
-            avatarUrl: profile?.avatar_url || null,
-            isSpeaking: localSpeaking,
-            isMuted: isMutedRef.current,
-            isDeafened: isDeafenedRef.current,
-            isScreenSharing: true,
-          })
-        }
-
-        if (serverPresenceChannelRef.current && connectedChannel) {
-          serverPresenceChannelRef.current.send({
-            type: 'broadcast',
-            event: 'voice_state',
-            payload: {
-              action: 'update',
-              channelId: connectedChannel.id,
-              identity: myIdentityRef.current,
-              name: profile?.username || user?.user_metadata?.username || 'Shamsy',
-              avatarUrl: profile?.avatar_url || null,
-              isSpeaking: localSpeaking,
-              isMuted: isMutedRef.current,
-              isDeafened: isDeafenedRef.current,
-              isScreenSharing: true,
-            },
-          })
-          serverPresenceChannelRef.current.track({
-            identity: myIdentityRef.current,
-            channelId: connectedChannel.id,
-            name: profile?.username || user?.user_metadata?.username || 'Shamsy',
-            avatarUrl: profile?.avatar_url || null,
-            isSpeaking: localSpeaking,
-            isMuted: isMutedRef.current,
-            isDeafened: isDeafenedRef.current,
-            isScreenSharing: true,
-          }).catch(() => {})
-        }
+        updateMediaPresence(true, isCameraOnRef.current)
 
         setParticipants((prev) =>
           prev.map((p, idx) => (idx === 0 ? { ...p, isScreenSharing: true } : p))
@@ -1960,6 +2273,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
         isMuted,
         isDeafened,
         isScreenSharing,
+        isCameraOn,
+        cameraStream,
+        remoteCameraStreams,
+        toggleCamera,
+        screenQuality,
+        setScreenQuality,
         localSpeaking,
         participants,
         serverVoiceMembers,

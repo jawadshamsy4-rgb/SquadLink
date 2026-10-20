@@ -82,6 +82,7 @@ export default function ChannelSidebar({
     isMuted,
     isDeafened,
     isScreenSharing,
+    isCameraOn,
     localSpeaking,
     participants,
     callDuration,
@@ -618,6 +619,7 @@ export default function ChannelSidebar({
                           const isMutedNow = isLocal ? isMuted : !!p.isMuted
                           const isDeafenedNow = isLocal ? isDeafened : !!p.isDeafened
                           const isSharingNow = isLocal ? isScreenSharing : !!p.isScreenSharing
+                          const isCameraOnNow = isLocal ? isCameraOn : !!p.isCameraOn
 
                           return (
                             <div
@@ -660,6 +662,11 @@ export default function ChannelSidebar({
                                 {isSharingNow && (
                                   <span className="rounded bg-gradient-to-r from-purple-600 to-pink-500 px-1.5 py-0.5 text-[9px] font-black text-white tracking-wider shadow-xs">
                                     LIVE
+                                  </span>
+                                )}
+                                {isCameraOnNow && (
+                                  <span className="rounded bg-gradient-to-r from-teal-500 to-emerald-500 px-1.5 py-0.5 text-[9px] font-black text-white tracking-wider shadow-xs" title="Camera Streaming">
+                                    CAM
                                   </span>
                                 )}
                                 {isDeafenedNow ? (
