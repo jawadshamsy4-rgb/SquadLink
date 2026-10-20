@@ -267,7 +267,9 @@ export default function MainViewport({
           )}
 
           {channel.type === 'map' && (
-            <SquadMap serverId={channel.server_id} />
+            <ErrorBoundary fallbackTitle="Squad radar map encountered an error">
+              <SquadMap serverId={channel.server_id} />
+            </ErrorBoundary>
           )}
         </div>
 

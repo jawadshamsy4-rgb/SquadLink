@@ -53,9 +53,14 @@ export default function MessageList({ channelId, onReply }: MessageListProps) {
   const [openEmojiPickerMsgId, setOpenEmojiPickerMsgId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const messagesRef = useRef<Message[]>([])
   const { user } = useAuth()
   const supabase = createClient()
   const currentUserId = user?.id || ''
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -104,7 +109,7 @@ export default function MessageList({ channelId, onReply }: MessageListProps) {
       }))
       setMessages(formatted)
 
-      const msgIds = formatted.map((m) => m.id)
+      const msgIds = formatted.map((m: any) => m.id)
       if (msgIds.length > 0) {
         const { data: reactData } = await supabase
           .from('message_reactions')
@@ -186,9 +191,24 @@ export default function MessageList({ channelId, onReply }: MessageListProps) {
         },
         (payload: any) => {
           if (payload.eventType === 'INSERT') {
-            setReactions((prev) => [...prev, payload.new as Reaction])
+            const newReact = payload.new as Reaction
+            // Only accept reactions for messages displayed in this channel
+            if (!messagesRef.current.some((m) => m.id === newReact.message_id)) return
+
+            setReactions((prev) => {
+              // Replace optimistic reaction or append new
+              const filtered = prev.filter(
+                (r) =>
+                  !(
+                    r.message_id === newReact.message_id &&
+                    r.user_id === newReact.user_id &&
+                    r.emoji === newReact.emoji
+                  )
+              )
+              return [...filtered, newReact]
+            })
           } else if (payload.eventType === 'DELETE') {
-            setReactions((prev) => prev.filter((r) => r.id !== payload.old.id))
+            setReactions((prev) => prev.filter((r) => r.id !== payload.old?.id))
           }
         }
       )
@@ -229,22 +249,49 @@ export default function MessageList({ channelId, onReply }: MessageListProps) {
     )
 
     if (existing) {
-      setReactions((prev) => prev.filter((r) => r.id !== existing.id))
-      await supabase.from('message_reactions').delete().eq('id', existing.id)
+      // Optimistic delete
+      setReactions((prev) =>
+        prev.filter(
+          (r) =>
+            !(
+              r.message_id === messageId &&
+              r.user_id === currentUserId &&
+              r.emoji === emoji
+            )
+        )
+      )
+      await supabase
+        .from('message_reactions')
+        .delete()
+        .match({ message_id: messageId, user_id: currentUserId, emoji })
     } else {
-      const newReaction = {
-        id: Math.random().toString(),
+      // Optimistic insert
+      const tempId = `temp-${Date.now()}`
+      const newReaction: Reaction = {
+        id: tempId,
         message_id: messageId,
         user_id: currentUserId,
         emoji,
       }
       setReactions((prev) => [...prev, newReaction])
 
-      await supabase.from('message_reactions').insert({
-        message_id: messageId,
-        user_id: currentUserId,
-        emoji,
-      })
+      const { data, error } = await supabase
+        .from('message_reactions')
+        .insert({
+          message_id: messageId,
+          user_id: currentUserId,
+          emoji,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        setReactions((prev) => prev.filter((r) => r.id !== tempId))
+      } else if (data) {
+        setReactions((prev) =>
+          prev.map((r) => (r.id === tempId ? (data as Reaction) : r))
+        )
+      }
     }
   }
 

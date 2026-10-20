@@ -86,10 +86,24 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
   const toggleFullscreen = (el: HTMLElement | null) => {
     if (!el) return
     if (document.fullscreenElement) {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {})
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen()
+      if (document.fullscreenElement === el) {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {})
+        } else if ((document as any).webkitExitFullscreen) {
+          (document as any).webkitExitFullscreen()
+        }
+      } else {
+        // Switching fullscreen to another target element
+        const exitPromise = document.exitFullscreen
+          ? document.exitFullscreen()
+          : Promise.resolve()
+        exitPromise.catch(() => {}).then(() => {
+          if (el.requestFullscreen) {
+            el.requestFullscreen().catch(() => {})
+          } else if ((el as any).webkitRequestFullscreen) {
+            (el as any).webkitRequestFullscreen()
+          }
+        })
       }
     } else {
       if (el.requestFullscreen) {
@@ -206,7 +220,7 @@ export default function VoiceChannel({ channelId, channelName, serverId }: Voice
                   }}
                   autoPlay
                   playsInline
-                  muted
+                  muted={share.isLocal}
                   className="h-full w-full object-contain"
                 />
 

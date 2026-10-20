@@ -147,8 +147,8 @@ export default function SquadMap({ serverId }: SquadMapProps) {
 
       if (locData && locData.length > 0) {
         const mapped: MemberLocation[] = locData
-          .filter((loc) => loc.latitude !== 0 || loc.longitude !== 0)
-          .map((loc) => ({
+          .filter((loc: any) => loc.latitude !== 0 || loc.longitude !== 0)
+          .map((loc: any) => ({
             id: loc.users?.id || loc.user_id,
             username: loc.users?.username || (loc.user_id === currentUserId ? currentUserName : 'Squad Mate'),
             avatar_url: loc.users?.avatar_url || null,
@@ -523,7 +523,7 @@ export default function SquadMap({ serverId }: SquadMapProps) {
           fetchLocations()
         }
       )
-      .on('broadcast', { event: 'tactical_ping' }, ({ payload }) => {
+      .on('broadcast', { event: 'tactical_ping' }, ({ payload }: any) => {
         if (payload) {
           setPings((prev) => [...prev, payload])
           soundEffects.playPing()

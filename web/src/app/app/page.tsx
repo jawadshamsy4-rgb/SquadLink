@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/providers/auth-provider'
 import { useVoice } from '@/components/providers/voice-provider'
@@ -53,48 +53,54 @@ export default function AppPage() {
     }
   }, [loading, user, router])
 
-  // Handle mobile hardware & browser back navigation (dismiss modals/drawer, prevent kicking to /login)
+  const isSettingsOpenRef = useRef(isSettingsOpen)
+  isSettingsOpenRef.current = isSettingsOpen
+  const isCreateServerOpenRef = useRef(isCreateServerOpen)
+  isCreateServerOpenRef.current = isCreateServerOpen
+  const isMobileNavOpenRef = useRef(isMobileNavOpen)
+  isMobileNavOpenRef.current = isMobileNavOpen
+  const selectedChannelRef = useRef(selectedChannel)
+  selectedChannelRef.current = selectedChannel
+
+  // Handle mobile hardware & browser back navigation (dismiss modals/drawer cleanly without infinite history loops)
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    // Ensure a history state exists on /app so back button is captured
+    // Ensure a history state exists on /app so back button is captured once
     window.history.pushState({ appPage: true }, '', window.location.href)
 
     const handlePopState = () => {
-      if (isSettingsOpen) {
+      if (isSettingsOpenRef.current) {
         setIsSettingsOpen(false)
         window.history.pushState({ appPage: true }, '', window.location.href)
         return
       }
 
-      if (isCreateServerOpen) {
+      if (isCreateServerOpenRef.current) {
         setIsCreateServerOpen(false)
         window.history.pushState({ appPage: true }, '', window.location.href)
         return
       }
 
-      if (isMobileNavOpen) {
+      if (isMobileNavOpenRef.current) {
         setIsMobileNavOpen(false)
         window.history.pushState({ appPage: true }, '', window.location.href)
         return
       }
 
-      if (selectedChannel && window.innerWidth < 768) {
+      if (selectedChannelRef.current && window.innerWidth < 768) {
         setSelectedChannel(null)
         setIsMobileNavOpen(true)
         window.history.pushState({ appPage: true }, '', window.location.href)
         return
       }
-
-      // Retain user safely inside /app rather than popping out to /login
-      window.history.pushState({ appPage: true }, '', window.location.href)
     }
 
     window.addEventListener('popstate', handlePopState)
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [isSettingsOpen, isCreateServerOpen, isMobileNavOpen, selectedChannel])
+  }, [])
 
   // Auto-select first channel of selected server so viewport is populated
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl, Alert, ActivityIndicator } from 'react-native'
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshControl, Alert, ActivityIndicator, BackHandler } from 'react-native'
 import { router } from 'expo-router'
-import { supabase } from '../lib/supabase'
+import { supabase, clearAllStoredAuth } from '../lib/supabase'
 import { updateLocationNow } from '../lib/location'
 import { stopMobilePresence } from '../lib/presence'
 import { Ionicons } from '@expo/vector-icons'
@@ -52,6 +52,29 @@ export default function HomeScreen() {
   useEffect(() => {
     updateLocationNow()
   }, [])
+
+  // Android hardware back button handler
+  useEffect(() => {
+    const onBackPress = () => {
+      if (selectedChannel) {
+        setSelectedChannel(null)
+        return true
+      }
+      if (showCreateServer) {
+        setShowCreateServer(false)
+        return true
+      }
+      if (selectedServer) {
+        setSelectedServer(null)
+        return true
+      }
+      BackHandler.exitApp()
+      return true
+    }
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress)
+    return () => subscription.remove()
+  }, [selectedChannel, showCreateServer, selectedServer])
 
   // Load servers
   const loadServers = useCallback(async () => {
@@ -252,9 +275,15 @@ export default function HomeScreen() {
           text: 'Log Out',
           style: 'destructive',
           onPress: async () => {
-            await stopMobilePresence()
-            await supabase.auth.signOut()
-            router.replace('/')
+            try {
+              await stopMobilePresence()
+              await supabase.auth.signOut()
+              await clearAllStoredAuth()
+            } catch (err) {
+              console.error('Logout error:', err)
+            } finally {
+              router.replace('/')
+            }
           },
         },
       ]

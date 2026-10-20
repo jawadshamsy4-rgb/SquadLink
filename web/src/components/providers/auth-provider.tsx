@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 2. Real-time auth state change subscription
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
       if (!isMounted) return
 
       if (session?.user) {

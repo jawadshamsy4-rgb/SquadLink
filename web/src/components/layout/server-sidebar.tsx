@@ -54,7 +54,7 @@ export default function ServerSidebar({
         .select('server_id')
         .eq('user_id', user.id)
 
-      const memberServerIds = (memberRows || []).map((m) => m.server_id)
+      const memberServerIds = (memberRows || []).map((m: any) => m.server_id)
 
       // 2. Fetch servers where user is the owner OR a member
       let query = supabase.from('servers').select('*')

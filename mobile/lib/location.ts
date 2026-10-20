@@ -79,30 +79,32 @@ export async function pushLocationToSupabase(
 }
 
 // Background Task Definition for headless task execution
-TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
-  if (error) {
-    console.error('Background location task error:', error)
-    return
-  }
+if (!TaskManager.isTaskDefined(LOCATION_TASK_NAME)) {
+  TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
+    if (error) {
+      console.error('Background location task error:', error)
+      return
+    }
 
-  if (data?.locations && data.locations.length > 0) {
-    const location = data.locations[0]
-    if (location?.coords) {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session?.user?.id) {
-          await pushLocationToSupabase(
-            session.user.id,
-            location.coords.latitude,
-            location.coords.longitude
-          )
+    if (data?.locations && data.locations.length > 0) {
+      const location = data.locations[0]
+      if (location?.coords) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session?.user?.id) {
+            await pushLocationToSupabase(
+              session.user.id,
+              location.coords.latitude,
+              location.coords.longitude
+            )
+          }
+        } catch (err) {
+          console.error('Failed to process background location:', err)
         }
-      } catch (err) {
-        console.error('Failed to process background location:', err)
       }
     }
-  }
-})
+  })
+}
 
 /**
  * Starts background location tracking with low power/balanced accuracy.

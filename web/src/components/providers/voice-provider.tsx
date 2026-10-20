@@ -294,6 +294,10 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const getDisplayName = useCallback(() => {
+    return profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Squad Member'
+  }, [profile?.username, user?.user_metadata?.username, user?.email])
+
   useEffect(() => {
     if (user?.id) {
       myIdentityRef.current = user.id
@@ -316,9 +320,9 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       .select('id')
       .eq('server_id', voiceServerId)
       .eq('type', 'voice')
-      .then(({ data }) => {
+      .then(({ data }: any) => {
         if (data && data.length > 0) {
-          const ids = data.map((c) => c.id)
+          const ids = data.map((c: any) => c.id)
           setVoiceChannelIdsState((prev) => Array.from(new Set([...prev, ...ids])))
         }
       })
@@ -375,6 +379,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 isMuted: !!p.isMuted,
                 isDeafened: !!p.isDeafened,
                 isScreenSharing: !!p.isScreenSharing,
+                isCameraOn: !!p.isCameraOn,
               })
             }
           }
@@ -392,12 +397,13 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           if (myLocalId && !merged[cid].some((m) => m.identity === myLocalId)) {
             merged[cid].push({
               identity: myLocalId,
-              name: profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Squad Member',
+              name: getDisplayName(),
               avatarUrl: profile?.avatar_url || user?.user_metadata?.avatar_url || null,
               isSpeaking: false,
               isMuted: isMutedRef.current,
               isDeafened: isDeafenedRef.current,
               isScreenSharing: isScreenSharingRef.current,
+              isCameraOn: isCameraOnRef.current,
             })
           }
         }
@@ -407,7 +413,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
     serverPresChannel
       // 1. Instant 0ms broadcast updates for join, leave, mute, and deafen
-      .on('broadcast', { event: 'voice_state' }, ({ payload }) => {
+      .on('broadcast', { event: 'voice_state' }, ({ payload }: any) => {
         if (!payload || !payload.channelId || !payload.identity) return
 
         setServerVoiceMembers((prev) => {
@@ -428,6 +434,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               isMuted: !!payload.isMuted,
               isDeafened: !!payload.isDeafened,
               isScreenSharing: !!payload.isScreenSharing,
+              isCameraOn: !!payload.isCameraOn,
             }
             const existingIdx = list.findIndex((m) => m.identity === payload.identity)
             if (existingIdx >= 0) {
@@ -463,6 +470,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               isMuted: isMutedRef.current,
               isDeafened: isDeafenedRef.current,
               isScreenSharing: isScreenSharingRef.current,
+              isCameraOn: isCameraOnRef.current,
             },
           })
         }
@@ -471,12 +479,12 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       .on('presence', { event: 'sync' }, updatePresenceState)
       .on('presence', { event: 'join' }, updatePresenceState)
       .on('presence', { event: 'leave' }, updatePresenceState)
-      .subscribe(async (status) => {
+      .subscribe(async (status: any) => {
         if (status === 'SUBSCRIBED') {
           // If we are currently connected to a voice channel in this server, announce immediately
           if (connectedChannelRef.current && connectedChannelRef.current.serverId === voiceServerId) {
             const myCurrentId = myIdentityRef.current || user?.id
-            const myName = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Squad Member'
+            const myName = getDisplayName()
             const myAvatar = profile?.avatar_url || user?.user_metadata?.avatar_url || null
 
             try {
@@ -489,6 +497,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 isMuted: isMutedRef.current,
                 isDeafened: isDeafenedRef.current,
                 isScreenSharing: isScreenSharingRef.current,
+                isCameraOn: isCameraOnRef.current,
               })
             } catch (e) {}
 
@@ -505,6 +514,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 isMuted: isMutedRef.current,
                 isDeafened: isDeafenedRef.current,
                 isScreenSharing: isScreenSharingRef.current,
+                isCameraOn: isCameraOnRef.current,
               },
             })
           }
@@ -599,11 +609,17 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                   isMuted: !!p.isMuted,
                   isDeafened: !!p.isDeafened,
                   isScreenSharing: !!p.isScreenSharing,
+                  isCameraOn: !!p.isCameraOn,
                 })
               }
             }
           })
         })
+
+        if (members.length === 0) {
+          // Do not overwrite known server voice state with an empty array during initial sync
+          return
+        }
 
         setServerVoiceMembers((prev) => ({
           ...prev,
@@ -635,6 +651,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 isMuted: !!payload.isMuted,
                 isDeafened: !!payload.isDeafened,
                 isScreenSharing: !!payload.isScreenSharing,
+                isCameraOn: !!payload.isCameraOn,
               }
               const existingIdx = currentList.findIndex((m) => m.identity === payload.identity)
               const nextList = [...currentList]
@@ -959,7 +976,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           payload: {
             type: 'candidate',
             from: myIdentityRef.current,
-            fromName: profile?.username || user?.user_metadata?.username || 'Shamsy',
+            fromName: getDisplayName(),
             to: targetPeerId,
             candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate,
           },
@@ -1112,6 +1129,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           const dataArray = new Uint8Array(bufferLength)
 
           let lastSpeakingState = false
+          let lastVolumeTrackTime = 0
           const checkVolume = () => {
             if (!analyserRef.current) return
             analyserRef.current.getByteFrequencyData(dataArray)
@@ -1131,16 +1149,20 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
                 prev.map((p, idx) => (idx === 0 ? { ...p, isSpeaking: isSpeakingNow } : p))
               )
 
-              if (serverPresenceChannelRef.current) {
+              // Throttle speaking volume presence updates to prevent Supabase Realtime rate-limit drops
+              const now = Date.now()
+              if (now - lastVolumeTrackTime > 3000 && serverPresenceChannelRef.current) {
+                lastVolumeTrackTime = now
                 serverPresenceChannelRef.current.track({
                   identity: myIdentityRef.current,
                   channelId: channelId,
-                  name: profile?.username || user?.user_metadata?.username || 'Shamsy',
+                  name: getDisplayName(),
                   avatarUrl: profile?.avatar_url || null,
                   isSpeaking: isSpeakingNow,
                   isMuted: isMutedRef.current,
                   isDeafened: isDeafenedRef.current,
                   isScreenSharing: isScreenSharingRef.current,
+                  isCameraOn: isCameraOnRef.current,
                 }).catch(() => {})
               }
             }
@@ -1156,7 +1178,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
 
       const myId = user?.id || `user-${Date.now()}`
       myIdentityRef.current = myId
-      const myName = profile?.username || user?.user_metadata?.username || 'Shamsy'
+      const myName = getDisplayName()
       const myAvatar = profile?.avatar_url || null
 
       setConnectedChannel({ id: channelId, name: channelName, serverName, serverId })
@@ -1361,7 +1383,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             [channelId]: allMembers,
           }))
         })
-        .on('presence', { event: 'leave' }, ({ key }) => {
+        .on('presence', { event: 'leave' }, ({ key }: any) => {
           // Clean up disconnected peer
           if (peerConnectionsRef.current.has(key)) {
             try {
@@ -1463,7 +1485,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
             return prev
           })
         })
-        .subscribe(async (status) => {
+        .subscribe(async (status: any) => {
           if (status === 'SUBSCRIBED') {
             await presChannel.track({
               identity: localParticipant.identity,
@@ -1708,7 +1730,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }
 
     if (presenceChannelRef.current) {
-      const myName = profile?.username || user?.user_metadata?.username || 'Shamsy'
+      const myName = getDisplayName()
       presenceChannelRef.current.track({
         identity: myIdentityRef.current,
         name: myName,
@@ -1748,7 +1770,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           action: 'update',
           channelId: connectedChannel.id,
           identity: myIdentityRef.current,
-          name: profile?.username || user?.user_metadata?.username || 'Shamsy',
+          name: getDisplayName(),
           avatarUrl: profile?.avatar_url || null,
           isSpeaking: false,
           isMuted: nextMute,
@@ -1760,7 +1782,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       serverPresenceChannelRef.current.track({
         identity: myIdentityRef.current,
         channelId: connectedChannel.id,
-        name: profile?.username || user?.user_metadata?.username || 'Shamsy',
+        name: getDisplayName(),
         avatarUrl: profile?.avatar_url || null,
         isSpeaking: false,
         isMuted: nextMute,
@@ -1803,7 +1825,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     })
 
     if (presenceChannelRef.current) {
-      const myName = profile?.username || user?.user_metadata?.username || 'Shamsy'
+      const myName = getDisplayName()
       presenceChannelRef.current.track({
         identity: myIdentityRef.current,
         name: myName,
@@ -1843,7 +1865,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
           action: 'update',
           channelId: connectedChannel.id,
           identity: myIdentityRef.current,
-          name: profile?.username || user?.user_metadata?.username || 'Shamsy',
+          name: getDisplayName(),
           avatarUrl: profile?.avatar_url || null,
           isSpeaking: false,
           isMuted: nextDeaf ? true : isMutedRef.current,
@@ -1855,7 +1877,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
       serverPresenceChannelRef.current.track({
         identity: myIdentityRef.current,
         channelId: connectedChannel.id,
-        name: profile?.username || user?.user_metadata?.username || 'Shamsy',
+        name: getDisplayName(),
         avatarUrl: profile?.avatar_url || null,
         isSpeaking: false,
         isMuted: nextDeaf ? true : isMutedRef.current,
@@ -1955,7 +1977,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               payload: {
                 type: 'offer',
                 from: myIdentityRef.current,
-                fromName: profile?.username || user?.user_metadata?.username || 'Shamsy',
+                fromName: getDisplayName(),
                 to: peerId,
                 sdp: offer,
               },
@@ -2039,7 +2061,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               payload: {
                 type: 'offer',
                 from: myIdentityRef.current,
-                fromName: profile?.username || user?.user_metadata?.username || 'Shamsy',
+                fromName: getDisplayName(),
                 to: peerId,
                 sdp: offer,
               },
@@ -2095,7 +2117,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               payload: {
                 type: 'offer',
                 from: myIdentityRef.current,
-                fromName: profile?.username || user?.user_metadata?.username || 'Shamsy',
+                fromName: getDisplayName(),
                 to: peerId,
                 sdp: offer,
               },
@@ -2208,7 +2230,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
               payload: {
                 type: 'offer',
                 from: myIdentityRef.current,
-                fromName: profile?.username || user?.user_metadata?.username || 'Shamsy',
+                fromName: getDisplayName(),
                 to: peerId,
                 sdp: offer,
               },

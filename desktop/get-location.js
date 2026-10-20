@@ -28,6 +28,4 @@ function getWindowsLocation() {
   });
 }
 
-getWindowsLocation().then((loc) => console.log('Location resolved:', loc));
-
 module.exports = { getWindowsLocation };

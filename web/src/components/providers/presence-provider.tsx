@@ -271,7 +271,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       .on('presence', { event: 'sync' }, () => {
         syncPresenceState(channel)
       })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
         if (Array.isArray(newPresences) && newPresences.length > 0) {
           const p = newPresences[newPresences.length - 1]
           if (p && p.user_id) {
@@ -290,7 +290,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           }
         }
       })
-      .on('presence', { event: 'leave' }, ({ key }) => {
+      .on('presence', { event: 'leave' }, ({ key }: any) => {
         // Only mark offline if no other presences for this key remain
         const state = channel.presenceState()
         if (!state[key] || state[key].length === 0) {
@@ -303,7 +303,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           syncPresenceState(channel)
         }
       })
-      .on('broadcast', { event: 'user_online' }, ({ payload }) => {
+      .on('broadcast', { event: 'user_online' }, ({ payload }: any) => {
         if (payload?.userId) {
           setOnlineUsers((prev) => ({
             ...prev,
@@ -319,7 +319,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           }))
         }
       })
-      .on('broadcast', { event: 'user_offline' }, ({ payload }) => {
+      .on('broadcast', { event: 'user_offline' }, ({ payload }: any) => {
         if (payload?.userId) {
           setOnlineUsers((prev) => {
             const next = { ...prev }
@@ -328,7 +328,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           })
         }
       })
-      .on('broadcast', { event: 'status_update' }, ({ payload }) => {
+      .on('broadcast', { event: 'status_update' }, ({ payload }: any) => {
         if (payload?.user_id) {
           setOnlineUsers((prev) => ({
             ...prev,
@@ -344,7 +344,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           }))
         }
       })
-      .subscribe(async (status) => {
+      .subscribe(async (status: any) => {
         if (status === 'SUBSCRIBED') {
           const payload = buildPresencePayload()
           await channel.track(payload)
@@ -397,7 +397,6 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('beforeunload', handleUnload)
       window.removeEventListener('pagehide', handleUnload)
 
-      handleUnload()
       supabase.removeChannel(channel)
       globalChannelRef.current = null
     }
@@ -431,7 +430,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       .on('presence', { event: 'sync' }, () => {
         syncPresenceState(channel)
       })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+      .on('presence', { event: 'join' }, ({ key, newPresences }: any) => {
         if (Array.isArray(newPresences) && newPresences.length > 0) {
           const p = newPresences[newPresences.length - 1]
           if (p && p.user_id) {
@@ -450,7 +449,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           }
         }
       })
-      .on('presence', { event: 'leave' }, ({ key }) => {
+      .on('presence', { event: 'leave' }, ({ key }: any) => {
         const state = channel.presenceState()
         if (!state[key] || state[key].length === 0) {
           setOnlineUsers((prev) => {
@@ -460,7 +459,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           })
         }
       })
-      .on('broadcast', { event: 'user_online' }, ({ payload }) => {
+      .on('broadcast', { event: 'user_online' }, ({ payload }: any) => {
         if (payload?.userId) {
           setOnlineUsers((prev) => ({
             ...prev,
@@ -476,7 +475,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           }))
         }
       })
-      .on('broadcast', { event: 'user_offline' }, ({ payload }) => {
+      .on('broadcast', { event: 'user_offline' }, ({ payload }: any) => {
         if (payload?.userId) {
           setOnlineUsers((prev) => {
             const next = { ...prev }
@@ -485,7 +484,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           })
         }
       })
-      .on('broadcast', { event: 'status_update' }, ({ payload }) => {
+      .on('broadcast', { event: 'status_update' }, ({ payload }: any) => {
         if (payload?.user_id) {
           setOnlineUsers((prev) => ({
             ...prev,
@@ -501,7 +500,7 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
           }))
         }
       })
-      .subscribe(async (status) => {
+      .subscribe(async (status: any) => {
         if (status === 'SUBSCRIBED') {
           await channel.track(buildPresencePayload())
         }

@@ -172,11 +172,8 @@ export default function MemberSidebar({
 
       // If this member is connected in voice comms
       const inVoice =
-        allVoiceParticipants.some(
-          (p) =>
-            p.identity === member.id ||
-            p.name?.toLowerCase() === member.username.toLowerCase()
-        ) || (isLocal && isConnected)
+        allVoiceParticipants.some((p) => p.identity === member.id) ||
+        (isLocal && isConnected)
 
       const livePres = getUserPresence(member.id)
       const userIsOnline = isLocal || inVoice || isUserOnline(member.id)
