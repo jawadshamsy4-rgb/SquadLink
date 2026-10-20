@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { VoiceProvider } from "@/components/providers/voice-provider";
+import { PresenceProvider } from "@/components/providers/presence-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,7 +53,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider>
           <AuthProvider>
             <VoiceProvider>
-              {children}
+              <PresenceProvider>
+                {children}
+              </PresenceProvider>
             </VoiceProvider>
           </AuthProvider>
         </ThemeProvider>

@@ -4,8 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/providers/auth-provider'
 import { useVoice } from '@/components/providers/voice-provider'
-
-export type UserPresenceStatus = 'online' | 'idle' | 'dnd' | 'offline'
+import { usePresence, UserPresenceStatus } from '@/components/providers/presence-provider'
 
 export interface ServerMember {
   id: string
@@ -33,6 +32,7 @@ export default function MemberSidebar({
 }: MemberSidebarProps) {
   const { user, profile } = useAuth()
   const { participants, isConnected, serverVoiceMembers } = useVoice()
+  const { onlineUsers, getUserPresence, isUserOnline, myStatus, myCustomStatus } = usePresence()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedMember, setSelectedMember] = useState<ServerMember | null>(null)
   const [serverDisplayName, setServerDisplayName] = useState<string>(serverName)
@@ -165,7 +165,7 @@ export default function MemberSidebar({
     return list
   }, [participants, serverVoiceMembers])
 
-  // Compute live presence based on active user and voice participants
+  // Compute live presence based on active user, real-time presence provider, and voice participants
   const membersWithPresence = useMemo(() => {
     return dbMembers.map((member) => {
       const isLocal = member.id === currentUserId
@@ -178,15 +178,26 @@ export default function MemberSidebar({
             p.name?.toLowerCase() === member.username.toLowerCase()
         ) || (isLocal && isConnected)
 
-      let status: UserPresenceStatus = member.status
+      const livePres = getUserPresence(member.id)
+      const userIsOnline = isLocal || inVoice || isUserOnline(member.id)
+
+      let status: UserPresenceStatus = 'offline'
       let customStatus = member.customStatus
 
-      if (isLocal) {
-        status = 'online'
-        customStatus = inVoice ? 'In Voice Comms 🔊' : 'Active in Squad'
-      } else if (inVoice) {
+      if (inVoice) {
         status = 'online'
         customStatus = 'In Voice Comms 🔊'
+      } else if (isLocal) {
+        status = myStatus || 'online'
+        customStatus = inVoice ? 'In Voice Comms 🔊' : (myCustomStatus || 'Active in Squad')
+      } else if (livePres && livePres.status !== 'offline') {
+        status = livePres.status
+        customStatus =
+          livePres.customStatus ||
+          (livePres.client === 'mobile' ? 'On Mobile 📱' : 'Online & Ready')
+      } else if (userIsOnline) {
+        status = 'online'
+        customStatus = 'Online'
       }
 
       return {
@@ -195,7 +206,17 @@ export default function MemberSidebar({
         customStatus,
       }
     })
-  }, [dbMembers, currentUserId, allVoiceParticipants, isConnected])
+  }, [
+    dbMembers,
+    currentUserId,
+    allVoiceParticipants,
+    isConnected,
+    getUserPresence,
+    isUserOnline,
+    onlineUsers,
+    myStatus,
+    myCustomStatus,
+  ])
 
   // Filter by search query
   const filteredMembers = useMemo(() => {
@@ -211,13 +232,39 @@ export default function MemberSidebar({
     })
   }, [membersWithPresence, searchQuery])
 
-  // Partition into Online vs Offline
+  // Partition into Online vs Offline with priority sorting
   const onlineMembers = useMemo(() => {
-    return filteredMembers.filter((m) => m.status !== 'offline')
+    return filteredMembers
+      .filter((m) => m.status !== 'offline')
+      .sort((a, b) => {
+        // 1. Server Owner always on top
+        if (a.isOwner && !b.isOwner) return -1
+        if (!a.isOwner && b.isOwner) return 1
+
+        // 2. In voice comms next
+        const aVoice = a.customStatus?.includes('Voice') ? 1 : 0
+        const bVoice = b.customStatus?.includes('Voice') ? 1 : 0
+        if (aVoice !== bVoice) return bVoice - aVoice
+
+        // 3. Status priority: online > dnd > idle
+        const priority: Record<string, number> = { online: 3, dnd: 2, idle: 1 }
+        const aPri = priority[a.status] || 0
+        const bPri = priority[b.status] || 0
+        if (aPri !== bPri) return bPri - aPri
+
+        // 4. Alphabetical
+        return a.username.localeCompare(b.username)
+      })
   }, [filteredMembers])
 
   const offlineMembers = useMemo(() => {
-    return filteredMembers.filter((m) => m.status === 'offline')
+    return filteredMembers
+      .filter((m) => m.status === 'offline')
+      .sort((a, b) => {
+        if (a.isOwner && !b.isOwner) return -1
+        if (!a.isOwner && b.isOwner) return 1
+        return a.username.localeCompare(b.username)
+      })
   }, [filteredMembers])
 
   const renderStatusBadge = (status: UserPresenceStatus) => {

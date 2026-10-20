@@ -3,6 +3,7 @@ import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, RefreshC
 import { router } from 'expo-router'
 import { supabase } from '../lib/supabase'
 import { updateLocationNow } from '../lib/location'
+import { stopMobilePresence } from '../lib/presence'
 import { Ionicons } from '@expo/vector-icons'
 
 interface Server {
@@ -251,6 +252,7 @@ export default function HomeScreen() {
           text: 'Log Out',
           style: 'destructive',
           onPress: async () => {
+            await stopMobilePresence()
             await supabase.auth.signOut()
             router.replace('/')
           },
@@ -435,6 +437,9 @@ export default function HomeScreen() {
                 <Text style={styles.avatarText}>
                   {item.username?.[0]?.toUpperCase() || '?'}
                 </Text>
+                {Date.now() - new Date(item.updated_at).getTime() < 15 * 60 * 1000 && (
+                  <View style={styles.radarOnlineDot} />
+                )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.radarMemberName}>{item.username}</Text>
@@ -630,4 +635,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(124,58,237,0.3)',
   },
   radarMemberTime: { color: '#c084fc', fontSize: 12, fontWeight: '600' },
+  radarOnlineDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10b981',
+    borderWidth: 2,
+    borderColor: '#0a0a0a',
+  },
 })

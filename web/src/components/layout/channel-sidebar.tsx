@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/components/providers/auth-provider'
 import { useVoice, type ParticipantInfo } from '@/components/providers/voice-provider'
+import { usePresence, UserPresenceStatus } from '@/components/providers/presence-provider'
 import ServerSettingsModal from '@/components/modals/server-settings-modal'
 
 type ChannelType = 'text' | 'voice' | 'map'
@@ -54,6 +55,16 @@ export default function ChannelSidebar({
   const [statusInput, setStatusInput] = useState('')
   const [isServerSettingsOpen, setIsServerSettingsOpen] = useState(false)
   const { user, profile } = useAuth()
+  const { myStatus, setMyStatus } = usePresence()
+  const [showStatusPicker, setShowStatusPicker] = useState(false)
+
+  // Close status picker when clicking outside
+  useEffect(() => {
+    if (!showStatusPicker) return
+    const handleClickOutside = () => setShowStatusPicker(false)
+    window.addEventListener('click', handleClickOutside)
+    return () => window.removeEventListener('click', handleClickOutside)
+  }, [showStatusPicker])
   const displayName =
     profile?.username ||
     (user?.user_metadata?.username as string) ||
@@ -843,18 +854,118 @@ export default function ChannelSidebar({
                 {displayName.charAt(0).toUpperCase()}
               </div>
             )}
-            <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-950 bg-emerald-500" />
+            {/* Interactive Status Indicator */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setShowStatusPicker((prev) => !prev)
+              }}
+              title={`Status: ${myStatus} (Click to change)`}
+              className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-gray-950 transition-transform cursor-pointer hover:scale-125 z-10 ${
+                myStatus === 'online'
+                  ? 'bg-emerald-500'
+                  : myStatus === 'idle'
+                  ? 'bg-amber-400'
+                  : myStatus === 'dnd'
+                  ? 'bg-red-500'
+                  : 'bg-slate-500'
+              }`}
+            />
           </div>
 
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-bold text-slate-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-300 transition-colors">
               {displayName}
             </p>
-            <p className="text-[10px] text-slate-500 dark:text-gray-500 truncate">
-              {isDeafened ? 'Deafened' : isMuted ? 'Muted' : 'Online'}
+            <p className="text-[10px] text-slate-500 dark:text-gray-500 truncate capitalize">
+              {isDeafened
+                ? 'Deafened'
+                : isMuted
+                ? 'Muted'
+                : myStatus === 'dnd'
+                ? 'Do Not Disturb'
+                : myStatus === 'idle'
+                ? 'Idle'
+                : myStatus === 'offline'
+                ? 'Invisible'
+                : 'Online'}
             </p>
           </div>
         </a>
+
+        {/* Quick Status Selector Popover */}
+        {showStatusPicker && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute bottom-16 left-3 z-50 w-52 overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#131722]/95 backdrop-blur-md p-1.5 shadow-2xl animate-in zoom-in-95 duration-150 text-xs font-semibold"
+          >
+            <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 dark:text-gray-500 tracking-wider">
+              Set Presence Status
+            </div>
+
+            <button
+              onClick={() => {
+                setMyStatus('online')
+                setShowStatusPicker(false)
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-800 dark:text-gray-200 cursor-pointer transition-colors"
+            >
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" />
+              <div className="text-left flex-1">
+                <p className="font-bold text-xs">Online</p>
+                <p className="text-[10px] text-slate-400 dark:text-gray-500">Active and ready</p>
+              </div>
+              {myStatus === 'online' && <span className="text-purple-500 font-bold">✓</span>}
+            </button>
+
+            <button
+              onClick={() => {
+                setMyStatus('idle')
+                setShowStatusPicker(false)
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-800 dark:text-gray-200 cursor-pointer transition-colors"
+            >
+              <span className="h-2.5 w-2.5 rounded-full bg-amber-400 shrink-0" />
+              <div className="text-left flex-1">
+                <p className="font-bold text-xs">Idle</p>
+                <p className="text-[10px] text-slate-400 dark:text-gray-500">Away from keyboard</p>
+              </div>
+              {myStatus === 'idle' && <span className="text-purple-500 font-bold">✓</span>}
+            </button>
+
+            <button
+              onClick={() => {
+                setMyStatus('dnd')
+                setShowStatusPicker(false)
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-800 dark:text-gray-200 cursor-pointer transition-colors"
+            >
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500 shrink-0" />
+              <div className="text-left flex-1">
+                <p className="font-bold text-xs">Do Not Disturb</p>
+                <p className="text-[10px] text-slate-400 dark:text-gray-500">Mute sounds & notifications</p>
+              </div>
+              {myStatus === 'dnd' && <span className="text-purple-500 font-bold">✓</span>}
+            </button>
+
+            <button
+              onClick={() => {
+                setMyStatus('offline')
+                setShowStatusPicker(false)
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-1.5 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-800 dark:text-gray-200 cursor-pointer transition-colors"
+            >
+              <span className="h-2.5 w-2.5 rounded-full bg-slate-500 shrink-0" />
+              <div className="text-left flex-1">
+                <p className="font-bold text-xs">Invisible</p>
+                <p className="text-[10px] text-slate-400 dark:text-gray-500">Appear offline to others</p>
+              </div>
+              {myStatus === 'offline' && <span className="text-purple-500 font-bold">✓</span>}
+            </button>
+          </div>
+        )}
 
         {/* Discord Control Buttons Trio */}
         <div className="flex items-center gap-0.5 shrink-0">
